@@ -1,0 +1,1 @@
+from .prithvi_model_v2 import PrithviModelV2

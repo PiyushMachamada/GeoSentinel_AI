@@ -1,0 +1,1 @@
+from .fasterseg_model import FasterSegModel
