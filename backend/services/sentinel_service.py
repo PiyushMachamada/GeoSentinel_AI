@@ -102,17 +102,11 @@ class SentinelService:
     ):
 
         geemap.ee_export_image(
-
-            image=image,
-
+            image,
             filename=output_path,
-
             region=roi,
-
             scale=10,
-
             file_per_band=False,
-
         )
 
     # ======================================================

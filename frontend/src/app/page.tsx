@@ -40,9 +40,12 @@ export default function HomePage() {
   const [loading, setLoading] =
     useState(true);
 
-  useEffect(() => {
+  function handleAOIChange(aoi: string) {
     setSelectedAnalysisId(null);
-  }, [selectedAOI]);
+    setSelectedAOI(aoi);
+    setAnalysis(null);
+    setTimeline([]);
+  }
 
   useEffect(() => {
     async function loadDashboard() {
@@ -81,7 +84,7 @@ export default function HomePage() {
   return (
     <MainLayout
       selectedAOI={selectedAOI}
-      onAOIChange={setSelectedAOI}
+      onAOIChange={handleAOIChange}
     >
       <div className="space-y-8">
 

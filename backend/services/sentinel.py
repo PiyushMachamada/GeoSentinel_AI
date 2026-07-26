@@ -1,9 +1,14 @@
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import ee
-import requests
-from google.oauth2 import service_account
+from backend.config import OUTPUT_DIR
+from backend.services.earth_engine import (
+    initialize_earth_engine,
+    point_buffer_region,
+    sentinel2_collection,
+)
 from backend.services.sentinel_ingestion import SentinelIngestionService
 
 
@@ -19,17 +24,9 @@ class SentinelService:
             "credentials/earthengine-service-account.json"
         )
 
-        credentials = service_account.Credentials.from_service_account_file(
-            service_account_file,
-            scopes=[
-                "https://www.googleapis.com/auth/earthengine",
-                "https://www.googleapis.com/auth/cloud-platform",
-            ],
-        )
-
-        ee.Initialize(
-            credentials=credentials,
+        initialize_earth_engine(
             project=self.project_id,
+            credentials_path=service_account_file,
         )
 
         print("✓ Earth Engine initialized with service account.")
@@ -51,25 +48,19 @@ class SentinelService:
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
-        region = (
-            ee.Geometry.Point([longitude, latitude])
-            .buffer(radius_km * 1000)
+        region = point_buffer_region(
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
         )
 
-        collection = (
-            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-            .filterBounds(region)
-            .filterDate(
-                start_date.strftime("%Y-%m-%d"),
-                end_date.strftime("%Y-%m-%d"),
-            )
-            .filter(
-                ee.Filter.lt(
-                    "CLOUDY_PIXEL_PERCENTAGE",
-                    max_cloud_cover,
-                )
-            )
-            .sort("system:time_start", False)
+        collection = sentinel2_collection(
+            region=region,
+            start_date=start_date.strftime("%Y-%m-%d"),
+            end_date=end_date.strftime("%Y-%m-%d"),
+            max_cloud_cover=max_cloud_cover,
+            sort_property="system:time_start",
+            descending=False,
         )
 
         count = collection.size().getInfo()
@@ -125,25 +116,19 @@ class SentinelService:
 
         start_date = latest_dt - timedelta(days=lookback_days)
 
-        region = (
-            ee.Geometry.Point([longitude, latitude])
-            .buffer(radius_km * 1000)
+        region = point_buffer_region(
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
         )
 
-        collection = (
-            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-            .filterBounds(region)
-            .filterDate(
-                start_date.strftime("%Y-%m-%d"),
-                latest_dt.strftime("%Y-%m-%d"),
-            )
-            .filter(
-                ee.Filter.lt(
-                    "CLOUDY_PIXEL_PERCENTAGE",
-                    max_cloud_cover,
-                )
-            )
-            .sort("system:time_start", False)
+        collection = sentinel2_collection(
+            region=region,
+            start_date=start_date.strftime("%Y-%m-%d"),
+            end_date=latest_dt.strftime("%Y-%m-%d"),
+            max_cloud_cover=max_cloud_cover,
+            sort_property="system:time_start",
+            descending=False,
         )
 
         images = collection.toList(2)
@@ -192,25 +177,19 @@ class SentinelService:
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
-        region = (
-            ee.Geometry.Point([longitude, latitude])
-            .buffer(radius_km * 1000)
+        region = point_buffer_region(
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
         )
 
-        collection = (
-            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-            .filterBounds(region)
-            .filterDate(
-                start_date.strftime("%Y-%m-%d"),
-                end_date.strftime("%Y-%m-%d"),
-            )
-            .filter(
-                ee.Filter.lt(
-                    "CLOUDY_PIXEL_PERCENTAGE",
-                    max_cloud_cover,
-                )
-            )
-            .sort("system:time_start", False)
+        collection = sentinel2_collection(
+            region=region,
+            start_date=start_date.strftime("%Y-%m-%d"),
+            end_date=end_date.strftime("%Y-%m-%d"),
+            max_cloud_cover=max_cloud_cover,
+            sort_property="system:time_start",
+            descending=False,
         )
 
         if collection.size().getInfo() < 2:
@@ -265,11 +244,15 @@ class SentinelService:
         latitude: float,
         longitude: float,
         radius_km: float,
-        output_directory: str = "backend/outputs",
+        output_paths=None,
+        output_directory: str | None = None,
     ):
         """
-        Downloads the before/after Sentinel images directly from
-        Google Earth Engine clipped to the AOI.
+        Downloads the before/after Sentinel images using product IDs and
+        the Sentinel ingestion pipeline.
+
+        If output_paths are provided, the generated GeoTIFFs will be
+        written into the supplied OutputManager paths.
 
         Returns
         -------
@@ -279,110 +262,36 @@ class SentinelService:
         }
         """
 
-        os.makedirs(output_directory, exist_ok=True)
+        if output_paths is not None:
+            before_path = str(output_paths["before_image"])
+            after_path = str(output_paths["after_image"])
+        else:
+            output_directory = output_directory or OUTPUT_DIR
+            os.makedirs(output_directory, exist_ok=True)
+            before_path = os.path.join(
+                output_directory,
+                f"{pair['before']['product_id']}_RGB.tif",
+            )
+            after_path = os.path.join(
+                output_directory,
+                f"{pair['after']['product_id']}_RGB.tif",
+            )
 
-        before_path = os.path.join(
-            output_directory,
-            "before_geotiff.tif",
-        )
-
-        after_path = os.path.join(
-            output_directory,
-            "after_geotiff.tif",
-        )
-
-        self.download_image(
-            image=pair["before"]["image"],
-            latitude=latitude,
-            longitude=longitude,
-            radius_km=radius_km,
+        before_result = self.get_geotiff_from_metadata(
+            pair["before"],
             output_path=before_path,
         )
 
-        self.download_image(
-            image=pair["after"]["image"],
-            latitude=latitude,
-            longitude=longitude,
-            radius_km=radius_km,
+        after_result = self.get_geotiff_from_metadata(
+            pair["after"],
             output_path=after_path,
         )
 
         return {
-            "before": {
-                "geotiff": before_path,
-                "image": pair["before"]["image"],
-                "image_id": pair["before"]["image_id"],
-                "product_id": pair["before"]["product_id"],
-                "date": pair["before"]["date"],
-                "cloud_cover": pair["before"]["cloud_cover"],
-                "properties": pair["before"]["properties"],
-            },
-            "after": {
-                "geotiff": after_path,
-                "image": pair["after"]["image"],
-                "image_id": pair["after"]["image_id"],
-                "product_id": pair["after"]["product_id"],
-                "date": pair["after"]["date"],
-                "cloud_cover": pair["after"]["cloud_cover"],
-                "properties": pair["after"]["properties"],
-            },
+            "before": before_result,
+            "after": after_result,
         }
     
-    def download_image(
-        self,
-        image,
-        latitude: float,
-        longitude: float,
-        radius_km: float,
-        output_path: str,
-        scale: int = 10,
-    ):
-        """
-        Downloads a Sentinel-2 RGB GeoTIFF directly from Earth Engine.
-        """
-
-        region = (
-            ee.Geometry.Point([longitude, latitude])
-            .buffer(radius_km * 1000)
-        )
-
-        image = (
-            image
-            .clip(region)
-            .select(["B4", "B3", "B2"])
-        )
-
-        url = image.getDownloadURL(
-            {
-                "scale": scale,
-                "region": region,
-                "format": "GEO_TIFF",
-                "filePerBand": False,
-            }
-        )
-
-        print("\nDownloading Sentinel GeoTIFF...")
-
-        os.makedirs(
-            os.path.dirname(output_path),
-            exist_ok=True,
-        )
-
-        response = requests.get(
-            url,
-            stream=True,
-        )
-
-        response.raise_for_status()
-
-        with open(output_path, "wb") as file:
-            for chunk in response.iter_content(8192):
-                file.write(chunk)
-
-        print(f"\nGeoTIFF saved to:\n{output_path}")
-
-        return output_path
-
     def get_latest_geotiff(
         self,
         latitude: float,
@@ -421,16 +330,21 @@ class SentinelService:
             "properties": latest["properties"],
         }
     
-    def get_geotiff_from_metadata(self, metadata):
+    def get_geotiff_from_metadata(
+        self,
+        metadata,
+        output_path: str | None = None,
+    ):
         """
-        Downloads a GeoTIFF for any Sentinel metadata dictionary.
+        Generates a GeoTIFF for a Sentinel metadata dictionary.
         """
 
         if metadata is None:
             return None
 
         geotiff = self.ingestion.ingest(
-            metadata["product_id"]
+            metadata["product_id"],
+            output_path=output_path,
         )
 
         return {
