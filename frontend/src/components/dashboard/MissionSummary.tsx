@@ -4,11 +4,40 @@ interface MissionSummaryProps {
   analysis: AnalysisResult | null;
 }
 
+function safeParse(value: string) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
 export default function MissionSummary({
   analysis,
 }: MissionSummaryProps) {
 
   if (!analysis) return null;
+
+  const fusion =
+    typeof analysis.fusion_results === "string"
+      ? safeParse(analysis.fusion_results)
+      : analysis.fusion_results;
+
+  const evidence =
+    typeof analysis.evidence_results === "string"
+      ? safeParse(analysis.evidence_results)
+      : analysis.evidence_results;
+
+  const cloud =
+    fusion?.preprocessing?.cloud_fraction?.average ?? 0;
+  const water =
+    fusion?.preprocessing?.water_fraction?.average ?? 0;
+  const agreement =
+    fusion?.model_agreement_score ?? 0;
+  const evidenceScore =
+    fusion?.overall_evidence_score ??
+    evidence?.evidence_score ??
+    0;
 
   const change = analysis.change_percentage;
 
@@ -68,16 +97,19 @@ export default function MissionSummary({
         <SummaryMetric
           title="Area of Interest"
           value={analysis.aoi_name}
+          tooltip="Selected Area of Interest being analysed."
         />
 
         <SummaryMetric
           title="Mission Confidence"
           value={`${analysis.confidence_score.toFixed(2)}%`}
+          tooltip="Overall confidence after model agreement, evidence reliability, cloud impact, water influence, and observation quality."
         />
 
         <SummaryMetric
           title="Change Detected"
           value={`${analysis.change_percentage.toFixed(2)}%`}
+          tooltip="Combined mission change estimate across structural and pixel-level change evidence."
         />
 
         <SummaryMetric
@@ -85,6 +117,31 @@ export default function MissionSummary({
           value={new Date(
             analysis.timestamp
           ).toLocaleString("en-GB")}
+          tooltip="Timestamp of the current analysis record."
+        />
+
+        <SummaryMetric
+          title="Cloud Cover"
+          value={`${cloud.toFixed(2)}%`}
+          tooltip="Average cloud contamination estimated during preprocessing and excluded from structural scoring."
+        />
+
+        <SummaryMetric
+          title="Water Influence"
+          value={`${water.toFixed(2)}%`}
+          tooltip="Average water coverage estimated during preprocessing and down-weighted in structural change calculations."
+        />
+
+        <SummaryMetric
+          title="Model Agreement"
+          value={`${agreement.toFixed(2)}%`}
+          tooltip="Cross-model agreement after comparing Prithvi, Dynamic World, ChangeStar, SSIM, and object evidence."
+        />
+
+        <SummaryMetric
+          title="Evidence Score"
+          value={`${evidenceScore.toFixed(2)}%`}
+          tooltip="Weighted evidence score combining agreement, reliability, segmentation confidence, detections, and observation quality."
         />
 
       </div>
@@ -96,12 +153,17 @@ export default function MissionSummary({
 function SummaryMetric({
   title,
   value,
+  tooltip,
 }: {
   title: string;
   value: string;
+  tooltip?: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+    <div
+      className="rounded-xl border border-slate-200 bg-slate-50 p-5"
+      title={tooltip}
+    >
 
       <div className="text-xs uppercase tracking-wide text-slate-500">
         {title}

@@ -16,8 +16,12 @@ class SentinelExtractor:
 
         zip_path = Path(zip_path)
         output_directory = Path(output_directory)
+        extraction_root = output_directory / zip_path.stem
 
-        output_directory.mkdir(
+        if extraction_root.exists():
+            shutil.rmtree(extraction_root)
+
+        extraction_root.mkdir(
             parents=True,
             exist_ok=True,
         )
@@ -26,7 +30,7 @@ class SentinelExtractor:
 
             for member in archive.infolist():
 
-                destination = output_directory / member.filename
+                destination = extraction_root / member.filename
 
                 if member.is_dir():
                     destination.mkdir(
@@ -45,12 +49,15 @@ class SentinelExtractor:
                         shutil.copyfileobj(source, target)
 
         safe_folders = list(
-            output_directory.glob("*.SAFE")
+            extraction_root.rglob("*.SAFE")
         )
 
         if not safe_folders:
             raise RuntimeError(
                 "SAFE folder not found after extraction."
             )
+
+        if len(safe_folders) > 1:
+            safe_folders.sort()
 
         return safe_folders[0]

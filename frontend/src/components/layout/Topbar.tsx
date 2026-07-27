@@ -20,19 +20,8 @@ export default function Topbar({
   useEffect(() => {
     async function loadAOIs() {
       try {
-        const data: any = await getAOIs();
-
-        console.log("AOIs from backend:", data);
-
-        // Handle both possible response formats
-        if (Array.isArray(data)) {
-          setAOIs(data);
-        } else if (Array.isArray(data.aois)) {
-          setAOIs(data.aois);
-        } else {
-          console.error("Unexpected AOI response:", data);
-          setAOIs([]);
-        }
+        const data = await getAOIs();
+        setAOIs(data);
       } catch (error) {
         console.error("Failed to load AOIs:", error);
         setAOIs([]);

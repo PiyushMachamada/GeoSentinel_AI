@@ -55,12 +55,16 @@ class SemanticChangeEngine:
     def __init__(self):
         print("\nLoading Semantic Change Engine...")
 
-    def analyze(self):
+    def analyze(self, output_paths):
 
         print("\nRunning Semantic Change Analysis...")
 
-        seg_before = np.load("backend/outputs/segmask_before.npy")
-        seg_after = np.load("backend/outputs/segmask_after.npy")
+        seg_before = np.load(
+            output_paths["segmask_before"]
+        )
+        seg_after = np.load(
+            output_paths["segmask_after"]
+        )
 
         if seg_before.shape != seg_after.shape:
             raise ValueError("Segmentation masks have different sizes.")
@@ -68,6 +72,8 @@ class SemanticChangeEngine:
         transitions = {}
 
         changed_pixels = 0
+        dominant = None
+        scene = None
 
         h, w = seg_before.shape
 
@@ -96,15 +102,7 @@ class SemanticChangeEngine:
             2
         )
 
-        if changed_pixels == 0:
-
-            results = {
-                "semantic_change_percentage": 0,
-                "dominant_transition": None,
-                "transitions": {}
-            }
-
-        else:
+        if changed_pixels != 0:
 
             total_transition_pixels = sum(transitions.values())
 
@@ -144,11 +142,8 @@ class SemanticChangeEngine:
                 transitions
         }
 
-        output_dir = Path("backend/outputs")
-        output_dir.mkdir(exist_ok=True)
-
         with open(
-            output_dir / "semantic_change_results.json",
+            output_paths["semantic_change_results"],
             "w"
         ) as f:
 

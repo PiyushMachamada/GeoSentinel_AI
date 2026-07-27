@@ -2,7 +2,8 @@ const API_BASE_URL = "http://127.0.0.1:8000";
 
 export async function getLatestAnalysis(aoiId: string) {
   const response = await fetch(
-    `${API_BASE_URL}/dashboard/latest/${aoiId}`
+    `${API_BASE_URL}/dashboard/latest/${aoiId}`,
+    { cache: "no-store" }
   );
 
   if (!response.ok) {
@@ -14,7 +15,8 @@ export async function getLatestAnalysis(aoiId: string) {
 
 export async function getAnalysisHistory(aoiId: string) {
   const response = await fetch(
-    `${API_BASE_URL}/dashboard/history/${aoiId}`
+    `${API_BASE_URL}/dashboard/history/${aoiId}`,
+    { cache: "no-store" }
   );
 
   if (!response.ok) {
@@ -26,7 +28,8 @@ export async function getAnalysisHistory(aoiId: string) {
 
 export async function getAnalysisTimeline(aoiId: string) {
   const response = await fetch(
-    `${API_BASE_URL}/dashboard/timeline/${aoiId}`
+    `${API_BASE_URL}/dashboard/timeline/${aoiId}`,
+    { cache: "no-store" }
   );
 
   if (!response.ok) {
@@ -40,7 +43,8 @@ export async function getAnalysisById(
   analysisId: number
 ) {
   const response = await fetch(
-    `${API_BASE_URL}/dashboard/analysis/${analysisId}`
+    `${API_BASE_URL}/dashboard/analysis/${analysisId}`,
+    { cache: "no-store" }
   );
 
   if (!response.ok) {

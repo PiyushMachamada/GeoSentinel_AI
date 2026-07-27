@@ -78,6 +78,8 @@ class GroundingDINOModel:
         text_threshold=None,
         min_box_size=20,
         max_detections=50,
+        min_confidence=0.28,
+        max_box_area_ratio=0.55,
     ):
         """
         Detect objects in an image.
@@ -104,6 +106,8 @@ class GroundingDINOModel:
             )
 
         image = Image.open(image_path).convert("RGB")
+        image_width, image_height = image.size
+        max_box_area = image_width * image_height * max_box_area_ratio
 
         inputs = self.processor(
             images=image,
@@ -158,6 +162,10 @@ class GroundingDINOModel:
                 or
                 height < min_box_size
             ):
+                continue
+
+            area = width * height
+            if area > max_box_area or float(score) < min_confidence:
                 continue
 
             detections.append(
@@ -215,6 +223,7 @@ class GroundingDINOModel:
         print(f"Prompt Length     : {prompt_length}")
         print(f"Box Threshold     : {box_threshold}")
         print(f"Text Threshold    : {text_threshold}")
+        print(f"Min Confidence    : {min_confidence}")
         print(f"Objects Detected  : {len(detections)}")
 
         scene_confidence = 0.0

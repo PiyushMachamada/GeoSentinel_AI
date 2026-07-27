@@ -8,6 +8,7 @@ from backend.database.monitoring_state import MonitoringStateDB
 
 from backend.services.sentinel import SentinelService
 from backend.models.geosentinel_pipeline import run_pipeline
+from backend.utils.output_manager import OutputManager
 
 logger = logging.getLogger(__name__)
 
@@ -117,11 +118,20 @@ class Monitor:
         # STEP 3 : Download BOTH images
         # ==========================================================
 
+        output_manager = OutputManager(aoi.id)
+        output_paths = output_manager.default_files()
+
+        logger.info(
+            "Analysis output directory : %s",
+            output_manager.directory,
+        )
+
         downloads = self.sentinel.download_pair_aoi(
             pair=pair,
             latitude=aoi.latitude,
             longitude=aoi.longitude,
             radius_km=aoi.radius_km,
+            output_paths=output_paths,
         )
 
         print(f"[{aoi.id}] Images downloaded successfully")
@@ -193,9 +203,10 @@ class Monitor:
         try:
 
             results = run_pipeline(
-                before_image=str(before),
-                after_image=str(after),
+                before_image=before_download["geotiff"],
+                after_image=after_download["geotiff"],
                 aoi_id=aoi.id,
+                output_manager=output_manager,
             )
 
             print(f"[{aoi.id}] Pipeline completed successfully")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   TransformWrapper,
   TransformComponent,
@@ -28,16 +28,19 @@ export default function ImageCanvas({
   opacity = 100,
 }: ImageCanvasProps) {
 
-  const [loading, setLoading] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
-  const [imageError, setImageError] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    setImageError(false);
-  }, [imageUrl]);
+  const [loadedUrl, setLoadedUrl] = useState<
+    string | undefined
+  >(undefined);
+  const [failedUrl, setFailedUrl] = useState<
+    string | undefined
+  >(undefined);
 
   if (!imageUrl) return null;
+
+  const loading =
+    loadedUrl !== imageUrl && failedUrl !== imageUrl;
+  const imageError = failedUrl === imageUrl;
 
   console.log("Image URL:", imageUrl);
 
@@ -145,12 +148,13 @@ export default function ImageCanvas({
                   alt={title}
                   onLoad={() => {
                     console.log("LOADED");
-                    setLoading(false);
+                    setLoadedUrl(imageUrl);
+                    setFailedUrl(undefined);
                   }}
                   onError={(e) => {
                     console.log("ERROR", e);
-                    setLoading(false);
-                    setImageError(true);
+                    setLoadedUrl(undefined);
+                    setFailedUrl(imageUrl);
                   }}
                   className="max-h-[650px] object-contain select-none"
                   draggable={false}

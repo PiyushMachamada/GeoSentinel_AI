@@ -13,10 +13,10 @@ PROMPTS = {
 
     "airport": (
         "runway. taxiway. terminal. hangar. "
-        "aircraft. helicopter. "
-        "fuel truck. vehicle. truck. bus. "
-        "parking lot. warehouse. storage building. "
-        "fuel tank. construction site. road."
+        "aircraft. helicopter. control tower. "
+        "fuel tank. cargo truck. truck. bus. vehicle. "
+        "warehouse. storage building. apron. "
+        "parking lot. construction site. road."
     ),
 
     # --------------------------------------------------
@@ -24,11 +24,10 @@ PROMPTS = {
     # --------------------------------------------------
 
     "port": (
-        "harbor. dock. pier. quay. "
-        "cargo ship. container ship. boat. "
-        "shipping container. container yard. "
-        "crane. warehouse. storage building. "
-        "truck. vehicle. fuel tank. road."
+        "ship. cargo ship. container ship. boat. "
+        "container. container yard. crane. dock. quay. pier. "
+        "warehouse. storage building. oil tank. "
+        "truck. vehicle. road."
     ),
 
     # --------------------------------------------------
@@ -36,11 +35,10 @@ PROMPTS = {
     # --------------------------------------------------
 
     "urban": (
-        "building. apartment. residential building. "
-        "commercial building. road. bridge. "
-        "intersection. parking lot. "
-        "vehicle. car. truck. bus. motorcycle. "
-        "construction site."
+        "building. residential building. industrial building. "
+        "road. bridge. construction site. parking lot. "
+        "vehicle. car. truck. bus. "
+        "warehouse. urban block."
     ),
 
     # --------------------------------------------------
@@ -48,11 +46,9 @@ PROMPTS = {
     # --------------------------------------------------
 
     "forest": (
-        "forest. tree. vegetation. "
-        "clearing. trail. road. "
-        "river. lake. "
-        "building. vehicle. "
-        "fire. smoke."
+        "tree. forest. vegetation. clearing. logging road. road. "
+        "vehicle. truck. oil pipeline. "
+        "building. smoke. fire."
     ),
 
     # --------------------------------------------------
@@ -92,12 +88,11 @@ PROMPTS = {
     # --------------------------------------------------
 
     "military": (
-        "military base. bunker. "
-        "runway. taxiway. hangar. "
+        "military base. bunker. warehouse. "
         "fighter aircraft. transport aircraft. helicopter. "
+        "missile launcher. radar. antenna. "
         "military vehicle. armored vehicle. truck. "
-        "radar. antenna. "
-        "fuel tank. warehouse."
+        "runway. taxiway. hangar."
     ),
 
     # --------------------------------------------------
@@ -181,24 +176,23 @@ PROMPTS = {
     # --------------------------------------------------
 
     "default": (
-        "building. road. bridge. "
-        "vehicle. truck. "
-        "warehouse. parking lot. "
-        "construction site. "
-        "river. forest."
+        "building. road. bridge. airport. port. "
+        "vehicle. truck. ship. crane. warehouse. "
+        "industrial building. parking lot. construction site. "
+        "forest. river."
     ),
 }
 
 
 THRESHOLDS = {
 
-    "airport": (0.30, 0.25),
+    "airport": (0.32, 0.24),
 
-    "port": (0.28, 0.22),
+    "port": (0.30, 0.22),
 
-    "urban": (0.32, 0.25),
+    "urban": (0.34, 0.26),
 
-    "forest": (0.22, 0.18),
+    "forest": (0.24, 0.18),
 
     "agriculture": (0.25, 0.20),
 
@@ -206,7 +200,7 @@ THRESHOLDS = {
 
     "industrial": (0.30, 0.24),
 
-    "military": (0.30, 0.25),
+    "military": (0.33, 0.24),
 
     "construction": (0.28, 0.22),
 

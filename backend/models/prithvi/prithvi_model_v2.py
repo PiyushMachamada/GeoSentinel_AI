@@ -181,7 +181,7 @@ class PrithviModelV2:
     # PREPROCESS IMAGE
     # ======================================================
 
-    def preprocess_image(self, image):
+    def preprocess_image(self, image, scale=1.0):
         """
         Prepare image for Prithvi EO 2.0.
 
@@ -238,6 +238,21 @@ class PrithviModelV2:
         # --------------------------------------------------
         # Tensor
         # --------------------------------------------------
+
+        if scale != 1.0:
+            scaled_height = max(64, int(image.shape[1] * scale))
+            scaled_width = max(64, int(image.shape[2] * scale))
+            image = np.stack(
+                [
+                    cv2.resize(
+                        image[channel],
+                        (scaled_width, scaled_height),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
+                    for channel in range(image.shape[0])
+                ],
+                axis=0,
+            )
 
         tensor = torch.from_numpy(image).float()
 
@@ -354,6 +369,64 @@ class PrithviModelV2:
 # TILE INFERENCE
 # ======================================================
 
+    def _predict_probabilities(self, tensor):
+        with torch.no_grad():
+            output = self.model(tensor)
+
+        probabilities = torch.softmax(
+            output.output,
+            dim=1,
+        )
+        return probabilities.squeeze(0).cpu().numpy()
+
+    def _infer_with_tta(self, tile):
+        if self.device.type == "cuda":
+            scales = [1.0, 1.1]
+            flip_modes = [None, "horizontal", "vertical"]
+        else:
+            scales = [1.0]
+            flip_modes = [None, "horizontal"]
+
+        probability_ensemble = []
+
+        for scale in scales:
+            for flip_mode in flip_modes:
+                augmented = tile
+
+                if flip_mode == "horizontal":
+                    augmented = np.flip(augmented, axis=2).copy()
+                elif flip_mode == "vertical":
+                    augmented = np.flip(augmented, axis=1).copy()
+
+                tensor = self.preprocess_image(
+                    augmented,
+                    scale=scale,
+                )
+                probabilities = self._predict_probabilities(tensor)
+
+                probabilities = np.stack(
+                    [
+                        cv2.resize(
+                            probabilities[class_index],
+                            (224, 224),
+                            interpolation=cv2.INTER_LINEAR,
+                        )
+                        for class_index in range(probabilities.shape[0])
+                    ],
+                    axis=0,
+                )
+
+                if flip_mode == "horizontal":
+                    probabilities = np.flip(probabilities, axis=2).copy()
+                elif flip_mode == "vertical":
+                    probabilities = np.flip(probabilities, axis=1).copy()
+
+                probability_ensemble.append(probabilities)
+
+        stacked = np.stack(probability_ensemble, axis=0)
+        mean_probabilities = stacked.mean(axis=0)
+        return mean_probabilities
+
     def predict_large_image(
         self,
         image,
@@ -377,7 +450,17 @@ class PrithviModelV2:
         print(f"Tile Size   : {tile_size} x {tile_size}")
         print(f"Total Tiles : {total_tiles}\n")
 
-        predictions = []
+        num_classes = len(CLASS_NAMES)
+        height = image.shape[1]
+        width = image.shape[2]
+        probability_sum = np.zeros(
+            (num_classes, height, width),
+            dtype=np.float32,
+        )
+        vote_count = np.zeros(
+            (height, width),
+            dtype=np.float32,
+        )
 
         start_time = time.time()
 
@@ -385,32 +468,33 @@ class PrithviModelV2:
 
             tile_start = time.time()
 
-            tensor = self.preprocess_image(tile)
-
-            prediction = self.predict(tensor)
-
-            prediction = cv2.resize(
-                prediction.astype(np.uint8),
-                (tile_size, tile_size),
-                interpolation=cv2.INTER_NEAREST,
+            probabilities = self._infer_with_tta(tile)
+            resized_probabilities = np.stack(
+                [
+                    cv2.resize(
+                        probabilities[class_index],
+                        (tile_size, tile_size),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
+                    for class_index in range(probabilities.shape[0])
+                ],
+                axis=0,
             )
 
-            predictions.append(
-                (
-                    prediction,
-                    y,
-                    x,
-                )
-            )
+            h = min(tile_size, height - y)
+            w = min(tile_size, width - x)
+
+            probability_sum[:, y:y+h, x:x+w] += resized_probabilities[:, :h, :w]
+            vote_count[y:y+h, x:x+w] += 1.0
 
             tile_time = time.time() - tile_start
 
-        if i == 1 or i % 10 == 0 or i == total_tiles:
-            print(
-                f"[{i}/{total_tiles}] "
-                f"{100*i/total_tiles:.1f}% complete "
-                f"({tile_time:.2f}s)"
-            )
+            if i == 1 or i % 10 == 0 or i == total_tiles:
+                print(
+                    f"[{i}/{total_tiles}] "
+                    f"{100*i/total_tiles:.1f}% complete "
+                    f"({tile_time:.2f}s)"
+                )
 
         total_time = time.time() - start_time
 
@@ -419,16 +503,27 @@ class PrithviModelV2:
 
         print("\nMerging tiles...")
 
-        merged = self.merge_tiles(
-            predictions,
-            image.shape[1],
-            image.shape[2],
-            tile_size=tile_size,
+        vote_count = np.maximum(vote_count, 1e-6)
+        mean_probabilities = probability_sum / vote_count[np.newaxis, :, :]
+        prediction = mean_probabilities.argmax(axis=0).astype(np.uint8)
+        confidence_map = mean_probabilities.max(axis=0).astype(np.float32)
+
+        entropy = -np.sum(
+            mean_probabilities * np.log(mean_probabilities + 1e-8),
+            axis=0,
         )
+        uncertainty_map = (
+            entropy / np.log(mean_probabilities.shape[0])
+        ).astype(np.float32)
 
         print("Merge complete.\n")
 
-        return merged
+        return {
+            "prediction": prediction,
+            "confidence_map": confidence_map,
+            "uncertainty_map": uncertainty_map,
+            "probabilities": mean_probabilities,
+        }
 
     # ======================================================
     # RUN MODEL
@@ -446,19 +541,8 @@ class PrithviModelV2:
             (224 x 224)
         """
 
-        with torch.no_grad():
-
-            output = self.model(
-                tensor
-            )
-
-        prediction = output.output.argmax(
-            dim=1
-        )
-
-        prediction = prediction.squeeze()
-
-        prediction = prediction.cpu().numpy()
+        probabilities = self._predict_probabilities(tensor)
+        prediction = probabilities.argmax(axis=0)
 
         print("\nPrediction Debug")
         print("-" * 40)
@@ -601,6 +685,8 @@ class PrithviModelV2:
         overlay,
         image_path,
         output_paths,
+        confidence_map,
+        uncertainty_map,
     ):
         filename = os.path.basename(image_path).lower()
 
@@ -609,12 +695,18 @@ class PrithviModelV2:
             mask_path = output_paths["segmask_before"]
 
             overlay_path = output_paths["prithvi_before"]
+            confidence_path = output_paths["prithvi_before_confidence"]
+            uncertainty_path = output_paths["prithvi_before_uncertainty"]
+            confidence_npy_path = output_paths["prithvi_before_confidence_npy"]
 
         else:
 
             mask_path = output_paths["segmask_after"]
 
             overlay_path = output_paths["prithvi_after"]
+            confidence_path = output_paths["prithvi_after_confidence"]
+            uncertainty_path = output_paths["prithvi_after_uncertainty"]
+            confidence_npy_path = output_paths["prithvi_after_confidence_npy"]
 
         np.save(
             mask_path,
@@ -626,8 +718,25 @@ class PrithviModelV2:
             overlay,
         )
 
+        confidence_visual = np.clip(
+            confidence_map * 255.0,
+            0,
+            255,
+        ).astype(np.uint8)
+        uncertainty_visual = np.clip(
+            uncertainty_map * 255.0,
+            0,
+            255,
+        ).astype(np.uint8)
+
+        cv2.imwrite(str(confidence_path), confidence_visual)
+        cv2.imwrite(str(uncertainty_path), uncertainty_visual)
+        np.save(confidence_npy_path, confidence_map.astype(np.float32))
+
         print(f"Segmentation mask saved: {mask_path}")
         print(f"Segmentation visualization saved: {overlay_path}")
+        print(f"Segmentation confidence saved: {confidence_path}")
+        print(f"Segmentation uncertainty saved: {uncertainty_path}")
 
         return overlay_path
 
@@ -670,10 +779,14 @@ class PrithviModelV2:
 
         print("\nStarting tiled segmentation...")
 
-        prediction = self.predict_large_image(
+        inference = self.predict_large_image(
             image,
             tile_size=1024,
         )
+
+        prediction = inference["prediction"]
+        confidence_map = inference["confidence_map"]
+        uncertainty_map = inference["uncertainty_map"]
 
         print("\nPrediction Shape:", prediction.shape)
 
@@ -690,6 +803,17 @@ class PrithviModelV2:
             prediction,
             original_width,
             original_height,
+        )
+
+        confidence_map = cv2.resize(
+            confidence_map,
+            (original_width, original_height),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        uncertainty_map = cv2.resize(
+            uncertainty_map,
+            (original_width, original_height),
+            interpolation=cv2.INTER_LINEAR,
         )
 
         print("Prediction resized to original resolution.")
@@ -728,6 +852,8 @@ class PrithviModelV2:
             overlay,
             image_path,
             output_paths,
+            confidence_map,
+            uncertainty_map,
         )
 
         print(f"\nOutput saved to: {output_path}")
@@ -741,4 +867,17 @@ class PrithviModelV2:
             f"{time.time() - overall_start:.2f} seconds"
         )
 
-        return class_stats
+        average_confidence = round(
+            float(confidence_map.mean() * 100),
+            2,
+        )
+        average_uncertainty = round(
+            float(uncertainty_map.mean() * 100),
+            2,
+        )
+
+        return {
+            "class_statistics": class_stats,
+            "average_confidence": average_confidence,
+            "average_uncertainty": average_uncertainty,
+        }

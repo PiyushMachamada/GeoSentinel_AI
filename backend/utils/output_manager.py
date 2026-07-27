@@ -1,6 +1,8 @@
 from pathlib import Path
 from datetime import datetime
 
+from backend.config import OUTPUT_DIR
+
 
 class OutputManager:
     """
@@ -32,12 +34,11 @@ class OutputManager:
         self.aoi_id = aoi_id
 
         self.timestamp = datetime.now().strftime(
-            "%Y-%m-%d_%H-%M-%S"
+            "%Y-%m-%d_%H-%M-%S_%f"
         )
 
         self.analysis_dir = (
-            Path("backend")
-            / "outputs"
+            Path(OUTPUT_DIR)
             / aoi_id
             / self.timestamp
         )
@@ -163,11 +164,41 @@ class OutputManager:
                     "before",
                     "before.tif",
                 ),
+            "before_model_input":
+                self.get_path(
+                    "before",
+                    "before_model_input.png",
+                ),
+            "before_cloud_mask":
+                self.get_path(
+                    "before",
+                    "cloud_mask.png",
+                ),
+            "before_water_mask":
+                self.get_path(
+                    "before",
+                    "water_mask.png",
+                ),
 
             "after_image":
                 self.get_path(
                     "after",
                     "after.tif",
+                ),
+            "after_model_input":
+                self.get_path(
+                    "after",
+                    "after_model_input.png",
+                ),
+            "after_cloud_mask":
+                self.get_path(
+                    "after",
+                    "cloud_mask.png",
+                ),
+            "after_water_mask":
+                self.get_path(
+                    "after",
+                    "water_mask.png",
                 ),
 
             # -------------------------
@@ -197,6 +228,36 @@ class OutputManager:
                     "prithvi",
                     "segmask_after.npy",
                 ),
+            "prithvi_before_confidence":
+                self.get_path(
+                    "prithvi",
+                    "segmentation_confidence_before.png",
+                ),
+            "prithvi_after_confidence":
+                self.get_path(
+                    "prithvi",
+                    "segmentation_confidence_after.png",
+                ),
+            "prithvi_before_uncertainty":
+                self.get_path(
+                    "prithvi",
+                    "segmentation_uncertainty_before.png",
+                ),
+            "prithvi_after_uncertainty":
+                self.get_path(
+                    "prithvi",
+                    "segmentation_uncertainty_after.png",
+                ),
+            "prithvi_before_confidence_npy":
+                self.get_path(
+                    "prithvi",
+                    "segmentation_confidence_before.npy",
+                ),
+            "prithvi_after_confidence_npy":
+                self.get_path(
+                    "prithvi",
+                    "segmentation_confidence_after.npy",
+                ),
 
             # -------------------------
             # ChangeStar
@@ -219,6 +280,11 @@ class OutputManager:
                     "changestar",
                     "changestar_result.json",
                 ),
+            "change_statistics":
+                self.get_path(
+                    "changestar",
+                    "change_statistics.json",
+                ),
 
             # -------------------------
             # Dynamic World
@@ -234,6 +300,19 @@ class OutputManager:
                 self.get_path(
                     "dynamic_world",
                     "after_dynamic_world.tif",
+                ),
+
+            # Colorized PNG renderings (browser-displayable)
+            "dynamic_world_before_png":
+                self.get_path(
+                    "dynamic_world",
+                    "before_dynamic_world.png",
+                ),
+
+            "dynamic_world_after_png":
+                self.get_path(
+                    "dynamic_world",
+                    "after_dynamic_world.png",
                 ),
 
             "dynamic_world_transition":
@@ -274,6 +353,11 @@ class OutputManager:
                         "grounding_dino",
                         "after.json",
                     ),
+                "grounding_dino_statistics_json":
+                    self.get_path(
+                        "grounding_dino",
+                        "object_statistics.json",
+                    ),
 
             # -------------------------
             # SSIM
@@ -289,6 +373,21 @@ class OutputManager:
                 self.get_path(
                     "change_detection",
                     "change_binary.jpg",
+                ),
+            "agreement_map":
+                self.get_path(
+                    "change_detection",
+                    "agreement_map.png",
+                ),
+            "evidence_map":
+                self.get_path(
+                    "change_detection",
+                    "evidence_map.png",
+                ),
+            "uncertainty_map":
+                self.get_path(
+                    "change_detection",
+                    "uncertainty_map.png",
                 ),
 
             # -------------------------
@@ -323,10 +422,83 @@ class OutputManager:
                     "qwen_prompt.txt",
                 ),
 
+            "semantic_change_results":
+                self.get_path(
+                    "reports",
+                    "semantic_change_results.json",
+                ),
+            "preprocessing_metadata":
+                self.get_path(
+                    "reports",
+                    "preprocessing_metadata.json",
+                ),
+            "model_agreement_json":
+                self.get_path(
+                    "reports",
+                    "model_agreement.json",
+                ),
+            "fusion_json":
+                self.get_path(
+                    "reports",
+                    "fusion_results.json",
+                ),
+
             "pipeline_log":
                 self.get_path(
                     "logs",
                     "pipeline.log",
+                ),
+
+            # -------------------------
+            # Research outputs
+            # -------------------------
+
+            "analysis_json":
+                self.get_path(
+                    "reports",
+                    "analysis.json",
+                ),
+
+            "mission_summary_json":
+                self.get_path(
+                    "reports",
+                    "mission_summary.json",
+                ),
+
+            "evidence_json":
+                self.get_path(
+                    "reports",
+                    "evidence.json",
+                ),
+
+            "trend_json":
+                self.get_path(
+                    "reports",
+                    "trend.json",
+                ),
+
+            "confidence_json":
+                self.get_path(
+                    "reports",
+                    "confidence.json",
+                ),
+
+            "report_md":
+                self.get_path(
+                    "reports",
+                    "report.md",
+                ),
+
+            "report_html":
+                self.get_path(
+                    "reports",
+                    "report.html",
+                ),
+
+            "validation_json":
+                self.get_path(
+                    "reports",
+                    "output_validation.json",
                 ),
         }
 

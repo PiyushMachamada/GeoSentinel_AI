@@ -31,7 +31,14 @@ class SentinelIngestionService:
         self.extraction_directory = Path(extraction_directory)
         self.output_directory = Path(output_directory)
 
-    def ingest(self, product_id: str, output_path: str | None = None):
+    def ingest(
+        self,
+        product_id: str,
+        output_path: str | None = None,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        radius_km: float | None = None,
+    ):
         """
         Download Sentinel product and convert it into
         an RGB GeoTIFF.
@@ -100,7 +107,10 @@ class SentinelIngestionService:
         print(output_geotiff)
 
         preprocessor.create_rgb_geotiff(
-            str(output_geotiff)
+            str(output_geotiff),
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
         )
 
         print("\nSentinel ingestion complete.")

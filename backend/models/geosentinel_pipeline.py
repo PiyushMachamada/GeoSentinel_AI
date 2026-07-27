@@ -1,5 +1,9 @@
 import json
 import time
+from pathlib import Path
+
+import cv2
+import numpy as np
 
 from backend.database.database import create_database
 from backend.database.save_results import save_result
@@ -8,10 +12,13 @@ from backend.services.sentinel_service import SentinelService
 from backend.monitoring.aoi_manager import AOIManager
 
 from backend.utils.output_manager import OutputManager
+from backend.utils.output_validation import validate_outputs
+from backend.utils.research_outputs import generate_research_outputs
 
 from backend.models.geotiff_preprocessing import prepare_geotiff_inputs
 from backend.models.geospatial_analysis import analyze_geotiff
 from backend.models.change_detection import run_change_detection
+from backend.models.dynamic_world_colorizer import generate_dw_png_pair
 
 from backend.models.grounding_dino.grounding_dino_engine import (
     GroundingDINOEngine,
@@ -41,10 +48,12 @@ from backend.models.dynamic_world_service import (
 
 from backend.models.dynamic_world_temporal_analysis import (
     compare_dynamic_world,
+    empty_dynamic_world_results,
 )
 
 from backend.models.dynamic_world_transition_analysis import (
     analyze_dynamic_world_transitions,
+    empty_dynamic_world_transition_results,
 )
 
 from backend.models.osint.osint_engine import (
@@ -115,6 +124,7 @@ class GeoSentinelPipeline:
         before_image=None,
         after_image=None,
         aoi_id="AOI001",
+        output_manager=None,
     ):
 
         print("\nInitializing GeoSentinel AI")
@@ -129,7 +139,10 @@ class GeoSentinelPipeline:
         # Output Manager
         # ==================================================
 
-        self.output_manager = OutputManager(aoi_id)
+        if output_manager is None:
+            self.output_manager = OutputManager(aoi_id)
+        else:
+            self.output_manager = output_manager
 
         self.paths = self.output_manager.default_files()
 
@@ -178,8 +191,9 @@ class GeoSentinelPipeline:
 
 
         (
-            self.before_image,
-            self.after_image,
+            self.before_display_image,
+            self.after_display_image,
+            self.preprocessing_results,
         ) = prepare_geotiff_inputs(
 
             before_input=before_image,
@@ -187,8 +201,14 @@ class GeoSentinelPipeline:
             after_input=after_image,
 
             output_paths=self.paths,
+            return_context=True,
 
         )
+
+        self.before_image = self.preprocessing_results["before_model_input_path"]
+        self.after_image = self.preprocessing_results["after_model_input_path"]
+        self.before_source_image = self.preprocessing_results["before_source_path"]
+        self.after_source_image = self.preprocessing_results["after_source_path"]
 
         self.aoi_id = self.aoi.id
 
@@ -275,6 +295,10 @@ class GeoSentinelPipeline:
                 "grounding_dino_after_json"
             ],
 
+            statistics_output=self.paths[
+                "grounding_dino_statistics_json"
+            ],
+
             aoi_type=self.aoi.mission_type,
 
         )
@@ -288,7 +312,7 @@ class GeoSentinelPipeline:
 
         print("\nSegmenting BEFORE image...")
 
-        before_stats = self.segmentation_model.segment(
+        before_result = self.segmentation_model.segment(
 
             self.before_image,
 
@@ -298,7 +322,7 @@ class GeoSentinelPipeline:
 
         print("\nSegmenting AFTER image...")
 
-        after_stats = self.segmentation_model.segment(
+        after_result = self.segmentation_model.segment(
 
             self.after_image,
 
@@ -310,11 +334,11 @@ class GeoSentinelPipeline:
 
         all_classes = (
 
-            set(before_stats.keys())
+            set(before_result["class_statistics"].keys())
 
             |
 
-            set(after_stats.keys())
+            set(after_result["class_statistics"].keys())
 
         )
 
@@ -322,11 +346,11 @@ class GeoSentinelPipeline:
 
             comparison[cls] = round(
 
-                after_stats.get(cls, 0)
+                after_result["class_statistics"].get(cls, 0)
 
                 -
 
-                before_stats.get(cls, 0),
+                before_result["class_statistics"].get(cls, 0),
 
                 2,
 
@@ -334,11 +358,18 @@ class GeoSentinelPipeline:
 
         return {
 
-            "before": before_stats,
+            "before": before_result["class_statistics"],
 
-            "after": after_stats,
+            "after": after_result["class_statistics"],
 
             "comparison": comparison,
+
+            "confidence_summary": {
+                "before_average_confidence": before_result["average_confidence"],
+                "after_average_confidence": after_result["average_confidence"],
+                "before_average_uncertainty": before_result["average_uncertainty"],
+                "after_average_uncertainty": after_result["average_uncertainty"],
+            },
 
         }
 
@@ -350,6 +381,40 @@ class GeoSentinelPipeline:
 
         print("\n[3/5] Running ChangeStar2")
 
+        before_cloud_mask = cv2.imread(
+            str(self.preprocessing_results["before_cloud_mask_path"]),
+            cv2.IMREAD_GRAYSCALE,
+        )
+        after_cloud_mask = cv2.imread(
+            str(self.preprocessing_results["after_cloud_mask_path"]),
+            cv2.IMREAD_GRAYSCALE,
+        )
+        before_water_mask = cv2.imread(
+            str(self.preprocessing_results["before_water_mask_path"]),
+            cv2.IMREAD_GRAYSCALE,
+        )
+        after_water_mask = cv2.imread(
+            str(self.preprocessing_results["after_water_mask_path"]),
+            cv2.IMREAD_GRAYSCALE,
+        )
+
+        combined_cloud_mask = None
+        combined_water_mask = None
+
+        if before_cloud_mask is not None and after_cloud_mask is not None:
+            combined_cloud_mask = np.where(
+                (before_cloud_mask > 0) | (after_cloud_mask > 0),
+                255,
+                0,
+            ).astype(np.uint8)
+
+        if before_water_mask is not None and after_water_mask is not None:
+            combined_water_mask = np.where(
+                (before_water_mask > 0) | (after_water_mask > 0),
+                255,
+                0,
+            ).astype(np.uint8)
+
         return self.changestar_model.predict(
 
             self.before_image,
@@ -357,6 +422,11 @@ class GeoSentinelPipeline:
             self.after_image,
 
             self.paths,
+
+            cloud_mask_path=combined_cloud_mask,
+            water_mask_path=combined_water_mask,
+            before_segmentation_path=self.paths["segmask_before"],
+            after_segmentation_path=self.paths["segmask_after"],
 
         )
 
@@ -368,6 +438,52 @@ class GeoSentinelPipeline:
 
         print("\n[5/5] Running SSIM Change Detection")
 
+        before_cloud_mask = cv2.imread(
+            str(self.preprocessing_results["before_cloud_mask_path"]),
+            cv2.IMREAD_GRAYSCALE,
+        )
+        after_cloud_mask = cv2.imread(
+            str(self.preprocessing_results["after_cloud_mask_path"]),
+            cv2.IMREAD_GRAYSCALE,
+        )
+        before_water_mask = cv2.imread(
+            str(self.preprocessing_results["before_water_mask_path"]),
+            cv2.IMREAD_GRAYSCALE,
+        )
+        after_water_mask = cv2.imread(
+            str(self.preprocessing_results["after_water_mask_path"]),
+            cv2.IMREAD_GRAYSCALE,
+        )
+        ignore_mask = None
+
+        cloud_mask = None
+        water_mask = None
+
+        if before_cloud_mask is not None and after_cloud_mask is not None:
+            cloud_mask = np.where(
+                (before_cloud_mask > 0) | (after_cloud_mask > 0),
+                255,
+                0,
+            ).astype(np.uint8)
+
+        if before_water_mask is not None and after_water_mask is not None:
+            water_mask = np.where(
+                (before_water_mask > 0) | (after_water_mask > 0),
+                255,
+                0,
+            ).astype(np.uint8)
+
+        if cloud_mask is not None and water_mask is not None:
+            ignore_mask = np.where(
+                (cloud_mask > 0) | (water_mask > 0),
+                255,
+                0,
+            ).astype(np.uint8)
+        elif cloud_mask is not None:
+            ignore_mask = cloud_mask
+        elif water_mask is not None:
+            ignore_mask = water_mask
+
         return run_change_detection(
 
             before_image=self.before_image,
@@ -375,6 +491,8 @@ class GeoSentinelPipeline:
             after_image=self.after_image,
 
             output_paths=self.paths,
+
+            ignore_mask=ignore_mask,
 
         )
         # ==================================================
@@ -391,10 +509,11 @@ class GeoSentinelPipeline:
 
         grounding_dino_results = self.run_object_detection()
 
-        for obj in grounding_dino_results.get(
-            "detections",
-            []
-        ):
+        detections = []
+        detections.extend(grounding_dino_results.get("before", []))
+        detections.extend(grounding_dino_results.get("after", []))
+
+        for obj in detections:
 
             self.evidence.add(
 
@@ -503,7 +622,9 @@ class GeoSentinelPipeline:
 
         print("\nRunning Semantic Change Analysis")
 
-        semantic_results = self.semantic_engine.analyze()
+        semantic_results = self.semantic_engine.analyze(
+            self.paths
+        )
 
         transition_results = semantic_results.get(
             "transitions",
@@ -515,40 +636,81 @@ class GeoSentinelPipeline:
         # --------------------------------------------------
 
         geospatial_results = analyze_geotiff(
-            self.after_image
+            self.after_source_image
         )
 
         # --------------------------------------------------
         # Dynamic World
         # --------------------------------------------------
 
-        print("\n[4/5] Downloading Dynamic World")
-
-        download_dynamic_world(
-            aoi=self.aoi,
-            output_paths=self.paths,
+        dynamic_world_results = empty_dynamic_world_results()
+        dynamic_world_transition_results = (
+            empty_dynamic_world_transition_results()
         )
+        dynamic_world_before_path = None
+        dynamic_world_after_path = None
+        dynamic_world_transition_map = None
+        dominant = None
 
-        print("\n[4/5] Running Dynamic World Analysis")
+        try:
+            print("\n[4/5] Downloading Dynamic World")
 
-        dynamic_world_results = compare_dynamic_world(
-            before_path=self.paths["dynamic_world_before"],
-            after_path=self.paths["dynamic_world_after"],
-        )
+            download_dynamic_world(
+                aoi=self.aoi,
+                output_paths=self.paths,
+            )
 
-        print("\nDynamic World Results")
-        print("\n===== Dynamic World =====")
-        print("Type:", type(dynamic_world_results))
+            print("\n[4/5] Running Dynamic World Analysis")
 
-        if isinstance(dynamic_world_results, dict):
-            print("Keys:", list(dynamic_world_results.keys()))
+            dynamic_world_results = compare_dynamic_world(
+                before_path=self.paths["dynamic_world_before"],
+                after_path=self.paths["dynamic_world_after"],
+            )
 
-            for key, value in dynamic_world_results.items():
-                print(f"{key}: {type(value)}")
+            print("\nDynamic World Results")
+            print("\n===== Dynamic World =====")
+            print("Type:", type(dynamic_world_results))
 
-            dominant = max(
-                dynamic_world_results,
-                key=lambda cls: dynamic_world_results[cls]["after"]
+            if isinstance(dynamic_world_results, dict):
+                print("Keys:", list(dynamic_world_results.keys()))
+
+                for key, value in dynamic_world_results.items():
+                    print(f"{key}: {type(value)}")
+
+                dominant = max(
+                    dynamic_world_results,
+                    key=lambda cls: dynamic_world_results[cls]["after"]
+                )
+
+            dynamic_world_transition_results = (
+                analyze_dynamic_world_transitions(
+                    before_path=self.paths["dynamic_world_before"],
+                    after_path=self.paths["dynamic_world_after"],
+                    output_paths=self.paths,
+                )
+            )
+
+            # Generate browser-displayable colorized PNG versions
+            print("\n[4/5] Generating Dynamic World colorized PNGs...")
+            dw_pngs = generate_dw_png_pair(self.paths)
+
+            # Store PNG paths in DB (browser-renderable) instead of raw TIF
+            dynamic_world_before_path = (
+                dw_pngs.get("before_png")
+                or self.paths["dynamic_world_before"]
+            )
+            dynamic_world_after_path = (
+                dw_pngs.get("after_png")
+                or self.paths["dynamic_world_after"]
+            )
+            dynamic_world_transition_map = (
+                self.paths["dynamic_world_transition"]
+            )
+
+        except Exception as exc:
+            print(
+                "\nDynamic World stage failed:"
+                f" {exc}"
             )
 
         self.evidence.add(
@@ -559,7 +721,7 @@ class GeoSentinelPipeline:
 
                 category="Land Cover",
 
-                confidence=0.92,
+                confidence=0.92 if dominant is not None else 0.0,
 
                 importance=0.8,
 
@@ -571,20 +733,15 @@ class GeoSentinelPipeline:
                         dominant,
 
                     "statistics":
-                        dynamic_world_results
+                        dynamic_world_results,
+
+                    "transition_results":
+                        dynamic_world_transition_results,
 
                 }
 
             )
 
-        )
-
-        dynamic_world_transition_results = (
-            analyze_dynamic_world_transitions(
-                before_path=self.paths["dynamic_world_before"],
-                after_path=self.paths["dynamic_world_after"],
-                output_paths=self.paths,
-            )
         )
 
         # --------------------------------------------------
@@ -652,11 +809,13 @@ class GeoSentinelPipeline:
             prithvi_results,
             dynamic_world_results,
             changestar_results,
-            ssim_results,              # <-- ADD THIS
+            ssim_results,
             grounding_dino_results,
             semantic_results,
             osint_results,
             reliability_results,
+            output_paths=self.paths,
+            preprocessing_results=self.preprocessing_results,
         )
 
         fusion_results["osint"] = osint_results
@@ -690,6 +849,7 @@ class GeoSentinelPipeline:
             fusion_results,
             evidence_results,
             reliability_results,
+            preprocessing_results=self.preprocessing_results,
         )
 
         mission_confidence = confidence
@@ -787,6 +947,11 @@ class GeoSentinelPipeline:
             prompt_path=self.paths[
                 "qwen_prompt"
             ],
+            aoi_context={
+                "id": self.aoi_id,
+                "name": self.aoi_name,
+                "mission_type": self.aoi.mission_type,
+            },
         )
 
         print("\n")
@@ -824,16 +989,16 @@ class GeoSentinelPipeline:
         print("=" * 60)
 
         print("\n===== PATHS BEING SAVED =====")
-        print("Before :", self.before_image)
-        print("After  :", self.after_image)
+        print("Before :", self.before_display_image)
+        print("After  :", self.after_display_image)
 
         for key, value in self.paths.items():
             print(f"{key}: {value}")
 
         print("=============================\n")
 
-        print("SAVE:", self.before_image)
-        print("SAVE:", self.after_image)
+        print("SAVE:", self.before_display_image)
+        print("SAVE:", self.after_display_image)
 
         try:
 
@@ -869,8 +1034,8 @@ class GeoSentinelPipeline:
 
                 analysis_directory=self.output_manager.directory,
 
-                before_image_path=self.before_image,
-                after_image_path=self.after_image,
+                before_image_path=self.before_display_image,
+                after_image_path=self.after_display_image,
 
                 prithvi_before_path=self.paths["prithvi_before"],
                 prithvi_after_path=self.paths["prithvi_after"],
@@ -880,9 +1045,9 @@ class GeoSentinelPipeline:
 
                 changestar_result_path=self.paths["changestar_prediction"],
 
-                dynamic_world_before_path=self.paths["dynamic_world_before"],
-                dynamic_world_after_path=self.paths["dynamic_world_after"],
-                dynamic_world_transition_map=self.paths["dynamic_world_transition"],
+                dynamic_world_before_path=dynamic_world_before_path,
+                dynamic_world_after_path=dynamic_world_after_path,
+                dynamic_world_transition_map=dynamic_world_transition_map,
 
                 grounding_dino_before_path=self.paths["grounding_dino_before"],
                 grounding_dino_after_path=self.paths["grounding_dino_after"],
@@ -899,6 +1064,55 @@ class GeoSentinelPipeline:
         except Exception as e:
 
             print(f"\nDatabase Error : {e}")
+            raise
+
+        # --------------------------------------------------
+        # Research Outputs
+        # --------------------------------------------------
+
+        try:
+            print("\n[Post] Generating research output files...")
+            generate_research_outputs(
+                output_paths=self.paths,
+                aoi_id=self.aoi_id,
+                aoi_name=self.aoi_name,
+                pipeline_version="GeoSentinel AI v1.0",
+                execution_time=execution_time,
+                confidence_result=mission_confidence,
+                fusion_results=fusion_results,
+                prithvi_results=prithvi_results,
+                changestar_results=changestar_results,
+                dynamic_world_results=dynamic_world_results,
+                grounding_dino_results=grounding_dino_results,
+                evidence_results=evidence_results,
+                reliability_results=reliability_results,
+                historical_results=history,
+                intelligence_report=intelligence_report,
+                semantic_results=semantic_results,
+                preprocessing_results=self.preprocessing_results,
+            )
+        except Exception as exc:
+            print(f"\n[Post] Research output generation failed: {exc}")
+
+        # --------------------------------------------------
+        # Output Validation
+        # --------------------------------------------------
+
+        try:
+            print("\n[Post] Validating output artifacts...")
+            validation_report = validate_outputs(
+                output_paths=self.paths,
+                aoi_id=self.aoi_id,
+                attempt_regeneration=True,
+            )
+            health = validation_report.get("health_percentage", 0)
+            missing_req = validation_report.get("missing_required", [])
+            print(
+                f"[Post] Output health: {health:.1f}%"
+                f" | Missing required: {missing_req}"
+            )
+        except Exception as exc:
+            print(f"\n[Post] Output validation failed: {exc}")
 
         print("\nGeoSentinel AI Complete.")
 
@@ -944,6 +1158,7 @@ def run_pipeline(
     before_image,
     after_image,
     aoi_id,
+    output_manager=None,
 ):
     """
     Convenience wrapper for running the GeoSentinel pipeline.
@@ -953,6 +1168,7 @@ def run_pipeline(
         before_image=before_image,
         after_image=after_image,
         aoi_id=aoi_id,
+        output_manager=output_manager,
     )
 
     return pipeline.run()

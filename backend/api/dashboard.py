@@ -1,13 +1,16 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from backend.database.dashboard_queries import (
     get_latest_analysis,
     get_analysis_history,
     get_analysis_timeline,
     get_analysis_by_id,
+)
+from backend.database.trend_queries import (
+    get_aoi_trend,
 )
 
 router = APIRouter(
@@ -97,6 +100,58 @@ def analysis_timeline(aoi_id: str):
         )
 
     return results
+
+
+# ==========================================================
+# Historical Trend
+# ==========================================================
+
+@router.get("/trend/{aoi_id}")
+def aoi_trend(aoi_id: str):
+    """
+    Returns aggregated historical trend metrics for an AOI:
+    change trend, confidence trend, timestamps, and growth rates.
+    """
+    trend = get_aoi_trend(aoi_id)
+    return JSONResponse(content=trend)
+
+
+# ==========================================================
+# Output Health
+# Returns a lightweight health summary for the latest run.
+# ==========================================================
+
+@router.get("/health/{aoi_id}")
+def analysis_health(aoi_id: str):
+    """
+    Returns a health summary for the latest analysis.
+    Reads the output_validation.json if present.
+    """
+    result = get_latest_analysis(aoi_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No analysis found for this AOI."
+        )
+
+    analysis_dir = result.get("analysis_directory")
+    if not analysis_dir:
+        return {"aoi_id": aoi_id, "health": "unknown", "detail": "No analysis directory"}
+
+    validation_path = Path(analysis_dir) / "reports" / "output_validation.json"
+    if validation_path.exists():
+        import json
+        try:
+            with open(validation_path, encoding="utf-8") as fh:
+                return json.load(fh)
+        except Exception:
+            pass
+
+    return {
+        "aoi_id": aoi_id,
+        "health": "unknown",
+        "detail": "Validation report not yet generated",
+    }
 
 
 # ==========================================================

@@ -1,5 +1,6 @@
 import os
 import time
+import zipfile
 import requests
 
 from dotenv import load_dotenv
@@ -134,6 +135,20 @@ class ImageryDownloader:
         product_id: str,
         output_path: str,
     ):
+        if os.path.exists(output_path):
+            if os.path.getsize(output_path) > 0 and zipfile.is_zipfile(output_path):
+                print("\nUsing cached Sentinel download")
+                print("----------------------------")
+                print(f"Product ID : {product_id}")
+                print(f"Path       : {output_path}")
+                return output_path
+            print("\nCached file is invalid, re-downloading...")
+            try:
+                os.remove(output_path)
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Failed to remove invalid cached download: {output_path}"
+                ) from exc
 
         if self.access_token is None:
             self.authenticate()

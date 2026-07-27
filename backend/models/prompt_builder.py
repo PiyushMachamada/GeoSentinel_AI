@@ -14,6 +14,7 @@ def build_intelligence_prompt(
     reliability_results,
     mission_assessment,
     historical_results,
+    aoi_context=None,
 ):
     """
     Build the intelligence prompt for Qwen.
@@ -49,6 +50,14 @@ Never invent:
 If evidence conflicts,
 explicitly explain the disagreement.
 
+Never interpret pixel difference as confirmed structural change without corroboration.
+
+If water level, tide, sediment, clouds, seasonality, or vegetation cycle could explain an observation,
+state that explicitly.
+
+If models disagree, use the exact phrase:
+"Evidence is conflicting."
+
 If evidence is insufficient,
 recommend continued monitoring.
 
@@ -58,6 +67,29 @@ Your writing style must be:
 - concise
 - scientific
 - intelligence focused
+""")
+
+    if aoi_context:
+        sections.append(f"""
+==================================================
+AOI CONTEXT
+==================================================
+
+AOI ID:
+{aoi_context.get("id", "Unknown")}
+
+AOI Name:
+{aoi_context.get("name", "Unknown")}
+
+AOI Category:
+{aoi_context.get("mission_type", "Unknown")}
+
+AOI-specific reasoning priorities:
+- airport: runway, terminal, aircraft, hangar, fuel infrastructure, cargo activity
+- port: ships, containers, cranes, docks, dredging, oil storage
+- urban: roads, buildings, parking, construction, industrial expansion
+- forest: clearing, logging roads, burn scars, vehicles, pipelines
+- military: aircraft, bunkers, missile systems, vehicles, radar, logistics
 """)
 
     # ==========================================================
@@ -141,11 +173,21 @@ EXECUTIVE EVIDENCE SUMMARY
         )
 
         sections.append(
+            f"Overall Evidence Score: {fusion_results.get('overall_evidence_score',0):.2f}%"
+        )
+
+        sections.append(
             f"Estimated Structural Change: {structural_change:.2f}%"
         )
 
         sections.append(
             f"Combined Mission Change Estimate: {mission_change:.2f}%"
+        )
+        sections.append(
+            f"Cloud Coverage: {fusion_results.get('preprocessing', {}).get('cloud_fraction', {}).get('average', 0):.2f}%"
+        )
+        sections.append(
+            f"Water Influence: {fusion_results.get('preprocessing', {}).get('water_fraction', {}).get('average', 0):.2f}%"
         )
 
     else:

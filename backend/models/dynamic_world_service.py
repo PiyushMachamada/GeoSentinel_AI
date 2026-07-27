@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import ee
 import geemap
 
@@ -146,6 +148,11 @@ def download_dynamic_world(aoi, output_paths):
 
     )
 
+    if not Path(before_path).exists():
+        raise RuntimeError(
+            "Dynamic World BEFORE export did not produce a raster file."
+        )
+
     print("Saved:", before_path)
 
     # ==========================================
@@ -165,6 +172,11 @@ def download_dynamic_world(aoi, output_paths):
         region=roi,
 
     )
+
+    if not Path(after_path).exists():
+        raise RuntimeError(
+            "Dynamic World AFTER export did not produce a raster file."
+        )
 
     print("Saved:", after_path)
 

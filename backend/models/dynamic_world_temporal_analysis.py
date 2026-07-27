@@ -15,6 +15,18 @@ CLASS_NAMES = {
 }
 
 
+def empty_dynamic_world_results():
+
+    return {
+        class_name: {
+            "before": 0.0,
+            "after": 0.0,
+            "change": 0.0,
+        }
+        for class_name in CLASS_NAMES.values()
+    }
+
+
 def calculate_statistics(path):
 
     with rasterio.open(path) as src:

@@ -57,11 +57,15 @@ class EvidenceReliabilityEngine:
         # Prithvi EO 2
         # --------------------------------------------------
 
-        dominant = max(
-            prithvi_results["after"].values()
-        )
-
-        prithvi_score = dominant / 100
+        prithvi_score = float(
+            prithvi_results.get(
+                "confidence_summary",
+                {},
+            ).get(
+                "after_average_confidence",
+                0.0,
+            )
+        ) / 100
 
         reliability["prithvi"] = ReliabilityScore(
             model="Prithvi EO 2",
@@ -76,9 +80,10 @@ class EvidenceReliabilityEngine:
         after = {}
 
         for cls, values in dynamic_world_results.items():
-            after[cls] = values.get("after", 0)
+            if isinstance(values, dict):
+                after[cls] = values.get("after", 0)
 
-        dw_score = max(after.values()) / 100
+        dw_score = max(after.values()) / 100 if after else 0.0
 
         reliability["dynamic_world"] = ReliabilityScore(
             model="Dynamic World",

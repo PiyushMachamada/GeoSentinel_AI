@@ -7,6 +7,7 @@ def run_change_detection(
     before_image,
     after_image,
     output_paths,
+    ignore_mask=None,
 ):
     """
     Performs SSIM-based change detection between two images.
@@ -58,6 +59,15 @@ def run_change_detection(
         after,
         (width, height)
     )
+
+    if ignore_mask is None:
+        ignore_mask = np.zeros((height, width), dtype=np.uint8)
+    elif ignore_mask.shape != (height, width):
+        ignore_mask = cv2.resize(
+            ignore_mask.astype(np.uint8),
+            (width, height),
+            interpolation=cv2.INTER_NEAREST,
+        )
 
     # ==========================================================
     # CONVERT TO GRAYSCALE
@@ -138,14 +148,15 @@ def run_change_detection(
             filtered[labels == i] = 255
 
     thresh = filtered
+    thresh[ignore_mask > 0] = 0
 
     # ==========================================================
     # CHANGE PERCENTAGE
     # ==========================================================
 
     change_pixels = np.count_nonzero(thresh)
-
-    total_pixels = thresh.size
+    total_pixels = int(np.count_nonzero(ignore_mask == 0))
+    total_pixels = max(total_pixels, 1)
 
     change_percentage = (
         change_pixels / total_pixels
@@ -197,6 +208,11 @@ def run_change_detection(
 
             region_count += 1
 
+    ignored_percentage = round(
+        float(np.mean(ignore_mask > 0) * 100),
+        2,
+    )
+
     # ==========================================================
     # SAVE RESULTS
     # ==========================================================
@@ -229,6 +245,7 @@ def run_change_detection(
             change_percentage,
             2,
         ),
+        "ignored_percentage": ignored_percentage,
 
         "regions_detected": region_count,
 

@@ -6,7 +6,6 @@ import ee
 from backend.config import OUTPUT_DIR
 from backend.services.earth_engine import (
     initialize_earth_engine,
-    point_buffer_region,
     sentinel2_collection,
 )
 from backend.services.sentinel_ingestion import SentinelIngestionService
@@ -33,6 +32,85 @@ class SentinelService:
 
         self.ingestion = SentinelIngestionService()
 
+    def _build_metadata(self, image):
+        properties = image.toDictionary().getInfo()
+        timestamp = image.get("system:time_start").getInfo()
+        centroid = image.geometry().centroid(1).coordinates().getInfo()
+
+        acquisition_date = None
+
+        if timestamp:
+            acquisition_date = datetime.utcfromtimestamp(
+                timestamp / 1000
+            ).strftime("%Y-%m-%d")
+
+        return {
+            "image": image,
+            "image_id": image.id().getInfo(),
+            "product_id": properties.get("PRODUCT_ID"),
+            "date": acquisition_date,
+            "cloud_cover": properties.get("CLOUDY_PIXEL_PERCENTAGE"),
+            "properties": properties,
+            "_timestamp_ms": timestamp,
+            "_centroid_lon": centroid[0],
+            "_centroid_lat": centroid[1],
+        }
+
+    def _select_observations(
+        self,
+        collection,
+        latitude: float,
+        longitude: float,
+        limit: int = 12,
+    ):
+        count = collection.size().getInfo()
+
+        if count == 0:
+            return []
+
+        image_list = collection.toList(
+            min(count, limit)
+        )
+
+        selected_by_datatake = {}
+
+        for index in range(min(count, limit)):
+            image = ee.Image(image_list.get(index))
+            metadata = self._build_metadata(image)
+            datatake_key = metadata["properties"].get(
+                "DATATAKE_IDENTIFIER"
+            ) or metadata["image_id"]
+
+            selection_distance = (
+                (metadata["_centroid_lat"] - latitude) ** 2
+                + (metadata["_centroid_lon"] - longitude) ** 2
+            )
+
+            current = selected_by_datatake.get(
+                datatake_key
+            )
+
+            if (
+                current is None
+                or selection_distance < current["_selection_distance"]
+            ):
+                metadata["_selection_distance"] = selection_distance
+                selected_by_datatake[datatake_key] = metadata
+
+        observations = sorted(
+            selected_by_datatake.values(),
+            key=lambda item: item["_timestamp_ms"],
+            reverse=True,
+        )
+
+        for item in observations:
+            item.pop("_timestamp_ms", None)
+            item.pop("_centroid_lon", None)
+            item.pop("_centroid_lat", None)
+            item.pop("_selection_distance", None)
+
+        return observations
+
     def get_latest_image(
         self,
         latitude: float,
@@ -48,11 +126,7 @@ class SentinelService:
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
-        region = point_buffer_region(
-            latitude=latitude,
-            longitude=longitude,
-            radius_km=radius_km,
-        )
+        region = ee.Geometry.Point([longitude, latitude])
 
         collection = sentinel2_collection(
             region=region,
@@ -70,31 +144,16 @@ class SentinelService:
         if count == 0:
             return None
 
-        image = collection.first()
+        observations = self._select_observations(
+            collection,
+            latitude=latitude,
+            longitude=longitude,
+        )
 
-        image_id = image.id().getInfo()
+        if not observations:
+            return None
 
-        properties = image.toDictionary().getInfo()
-
-        timestamp = image.get("system:time_start").getInfo()
-
-        acquisition_date = None
-
-        if timestamp:
-            acquisition_date = datetime.utcfromtimestamp(
-                timestamp / 1000
-            ).strftime("%Y-%m-%d")
-
-        product_id = properties.get("PRODUCT_ID")
-
-        return {
-            "image": image,
-            "image_id": image_id,
-            "product_id": properties.get("PRODUCT_ID"),
-            "date": acquisition_date,
-            "cloud_cover": properties.get("CLOUDY_PIXEL_PERCENTAGE"),
-            "properties": properties,
-        }
+        return observations[0]
     
     def get_previous_image(
         self,
@@ -116,11 +175,7 @@ class SentinelService:
 
         start_date = latest_dt - timedelta(days=lookback_days)
 
-        region = point_buffer_region(
-            latitude=latitude,
-            longitude=longitude,
-            radius_km=radius_km,
-        )
+        region = ee.Geometry.Point([longitude, latitude])
 
         collection = sentinel2_collection(
             region=region,
@@ -131,29 +186,16 @@ class SentinelService:
             descending=False,
         )
 
-        images = collection.toList(2)
+        observations = self._select_observations(
+            collection,
+            latitude=latitude,
+            longitude=longitude,
+        )
 
-        if collection.size().getInfo() < 2:
+        if not observations:
             return None
 
-        image = ee.Image(images.get(1))
-
-        properties = image.toDictionary().getInfo()
-
-        timestamp = image.get("system:time_start").getInfo()
-
-        acquisition_date = datetime.utcfromtimestamp(
-            timestamp / 1000
-        ).strftime("%Y-%m-%d")
-
-        return {
-            "image": image,
-            "image_id": image.id().getInfo(),
-            "product_id": properties.get("PRODUCT_ID"),
-            "date": acquisition_date,
-            "cloud_cover": properties.get("CLOUDY_PIXEL_PERCENTAGE"),
-            "properties": properties,
-        }
+        return observations[0]
     
     def get_image_pair(
         self,
@@ -177,11 +219,7 @@ class SentinelService:
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
-        region = point_buffer_region(
-            latitude=latitude,
-            longitude=longitude,
-            radius_km=radius_km,
-        )
+        region = ee.Geometry.Point([longitude, latitude])
 
         collection = sentinel2_collection(
             region=region,
@@ -192,36 +230,18 @@ class SentinelService:
             descending=False,
         )
 
-        if collection.size().getInfo() < 2:
+        observations = self._select_observations(
+            collection,
+            latitude=latitude,
+            longitude=longitude,
+        )
+
+        if len(observations) < 2:
             return None
 
-        images = collection.toList(2)
-
-        newest = ee.Image(images.get(0))
-        previous = ee.Image(images.get(1))
-
-        def metadata(image):
-
-            props = image.toDictionary().getInfo()
-
-            timestamp = image.get("system:time_start").getInfo()
-
-            return {
-                "image": image,
-                "image_id": image.id().getInfo(),
-                "product_id": props.get("PRODUCT_ID"),
-                "date": datetime.utcfromtimestamp(
-                    timestamp / 1000
-                ).strftime("%Y-%m-%d"),
-                "cloud_cover": props.get(
-                    "CLOUDY_PIXEL_PERCENTAGE"
-                ),
-                "properties": props,
-            }
-
         return {
-            "before": metadata(previous),
-            "after": metadata(newest),
+            "before": observations[1],
+            "after": observations[0],
         }
     
     def download_pair(self, pair):
@@ -280,11 +300,17 @@ class SentinelService:
         before_result = self.get_geotiff_from_metadata(
             pair["before"],
             output_path=before_path,
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
         )
 
         after_result = self.get_geotiff_from_metadata(
             pair["after"],
             output_path=after_path,
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
         )
 
         return {
@@ -334,6 +360,9 @@ class SentinelService:
         self,
         metadata,
         output_path: str | None = None,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        radius_km: float | None = None,
     ):
         """
         Generates a GeoTIFF for a Sentinel metadata dictionary.
@@ -345,6 +374,9 @@ class SentinelService:
         geotiff = self.ingestion.ingest(
             metadata["product_id"],
             output_path=output_path,
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
         )
 
         return {

@@ -25,6 +25,8 @@ Rules:
 - Explain evidence rather than listing model outputs.
 - Write in the style of an intelligence analyst, not an AI assistant.
 - If evidence is conflicting, explicitly describe the disagreement instead of resolving it yourself.
+- Distinguish pixel difference, structural change, environmental variation, cloud, seasonality, water level, tide, and vegetation cycle.
+- Only conclude construction, expansion, or infrastructure activity when multiple evidence sources support it.
 """
 
 
@@ -133,6 +135,7 @@ def generate_qwen_report(
     historical_results,
     report_path,
     prompt_path,
+    aoi_context=None,
 ):
 
     prompt = build_intelligence_prompt(
@@ -147,7 +150,8 @@ def generate_qwen_report(
         mission_confidence,
         reliability_results,
         mission_assessment,
-        historical_results
+        historical_results,
+        aoi_context=aoi_context,
     )
 
     _save_prompt(

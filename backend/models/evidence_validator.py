@@ -98,4 +98,11 @@ class EvidenceValidator:
 
             "agreement": status,
 
+            "confidence_breakdown": {
+                "change_percentage": round(float(change_percentage), 2),
+                "semantic_transitions": len(transition_results) if isinstance(transition_results, dict) else 0,
+                "dynamic_world_available": bool(dynamic_world_results),
+                "detection_count": len(detections),
+            },
+
         }

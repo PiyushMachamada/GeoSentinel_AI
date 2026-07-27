@@ -33,6 +33,20 @@ TRANSITION_COLORS = {
 }
 
 
+def empty_dynamic_world_transition_results(error: str | None = None):
+
+    return {
+        "summary": {
+            "changed_pixels": 0,
+            "change_percentage": 0.0,
+            "dominant_transition": None,
+            "dominant_percentage": 0.0,
+        },
+        "transitions": {},
+        "error": error,
+    }
+
+
 def analyze_dynamic_world_transitions(
     before_path,
     after_path,
