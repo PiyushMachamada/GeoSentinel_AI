@@ -4,7 +4,6 @@ import requests
 
 from backend.models.prompt_builder import build_intelligence_prompt
 from backend.config import OLLAMA_URL, QWEN_MODEL
-print("Loaded qwen_reasoning.py")
 
 
 MODEL_NAME = QWEN_MODEL

@@ -33,6 +33,11 @@ class MonitoringStateDB:
             else "last_checked"
         )
 
+        if "aoi_id" not in self.columns:
+            raise RuntimeError(
+                "monitoring_state table is missing required column: aoi_id"
+            )
+
 
     def get_state(
         self,
@@ -87,8 +92,16 @@ class MonitoringStateDB:
             upsert_columns.append("status")
             upsert_values.append(status)
 
+        if len(upsert_columns) <= 1:
+            raise RuntimeError(
+                "monitoring_state table has no writable state columns."
+            )
+
         placeholders = ", ".join(["?"] * len(upsert_columns))
-        column_sql = ", ".join(upsert_columns)
+        column_sql = ", ".join(
+            f'"{column}"'
+            for column in upsert_columns
+        )
 
         self.cursor.execute(
             f"""

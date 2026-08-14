@@ -26,10 +26,10 @@ def get_aois():
         conn.close()
         raise HTTPException(
             status_code=500,
-            detail="AOI table is missing id columns.",
+            detail="AOI table is missing a required id column.",
         )
 
-    mission_column = (
+    mission_select_expr = (
         "mission_type"
         if "mission_type" in columns
         else "NULL AS mission_type"
@@ -43,7 +43,7 @@ def get_aois():
             latitude,
             longitude,
             radius_km,
-            {mission_column},
+            {mission_select_expr},
             description,
             active,
             monitoring_interval,
