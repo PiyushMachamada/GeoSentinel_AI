@@ -3,11 +3,11 @@ import time
 import requests
 
 from backend.models.prompt_builder import build_intelligence_prompt
+from backend.config import OLLAMA_URL, QWEN_MODEL
 print("Loaded qwen_reasoning.py")
 
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "qwen2.5:7b"
+MODEL_NAME = QWEN_MODEL
 
 SYSTEM_PROMPT = """
 You are GeoSentinel AI's Senior Geospatial Intelligence (GEOINT) Analyst.

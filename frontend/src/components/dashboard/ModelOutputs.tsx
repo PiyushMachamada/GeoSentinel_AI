@@ -89,8 +89,8 @@ function Section({
 /** Derive a path relative to analysis_directory using forward-slash segments. */
 function derivedPath(analysisDir: string | undefined, ...segments: string[]) {
   if (!analysisDir) return undefined;
-  // Support both backslash and forward-slash directory separators
-  return `${analysisDir}\\${segments.join("\\")}`;
+  const normalizedDir = analysisDir.replace(/\\/g, "/").replace(/\/+$/, "");
+  return `${normalizedDir}/${segments.join("/")}`;
 }
 
 export default function ModelOutputs({

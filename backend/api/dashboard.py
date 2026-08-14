@@ -166,9 +166,32 @@ def analysis_health(aoi_id: str):
 @router.get("/file")
 def get_analysis_file(path: str):
 
-    file_path = Path(path)
+    if not path or not path.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Path query parameter is required.",
+        )
 
-    if not file_path.exists():
+    repo_root = Path(__file__).resolve().parents[2]
+    outputs_root = (repo_root / "backend" / "outputs").resolve()
+
+    normalized_input = path.replace("\\", "/").strip()
+    requested_path = Path(normalized_input)
+
+    if requested_path.is_absolute():
+        file_path = requested_path.resolve()
+    else:
+        file_path = (repo_root / requested_path).resolve()
+
+    try:
+        file_path.relative_to(outputs_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=403,
+            detail="Access to requested file path is not allowed.",
+        )
+
+    if not file_path.exists() or not file_path.is_file():
         raise HTTPException(
             status_code=404,
             detail=f"File not found: {file_path}"

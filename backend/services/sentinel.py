@@ -6,6 +6,7 @@ import ee
 from backend.config import OUTPUT_DIR
 from backend.services.earth_engine import (
     initialize_earth_engine,
+    point_buffer_region,
     sentinel2_collection,
 )
 from backend.services.sentinel_ingestion import SentinelIngestionService
@@ -126,7 +127,11 @@ class SentinelService:
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
-        region = ee.Geometry.Point([longitude, latitude])
+        region = point_buffer_region(
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
+        )
 
         collection = sentinel2_collection(
             region=region,
@@ -175,7 +180,11 @@ class SentinelService:
 
         start_date = latest_dt - timedelta(days=lookback_days)
 
-        region = ee.Geometry.Point([longitude, latitude])
+        region = point_buffer_region(
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
+        )
 
         collection = sentinel2_collection(
             region=region,
@@ -219,7 +228,11 @@ class SentinelService:
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
-        region = ee.Geometry.Point([longitude, latitude])
+        region = point_buffer_region(
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
+        )
 
         collection = sentinel2_collection(
             region=region,
