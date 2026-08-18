@@ -144,6 +144,11 @@ def create_database():
         change_map_path TEXT,
         change_binary_path TEXT,
 
+        grounding_dino_diff_path TEXT,
+        prithvi_change_map_path TEXT,
+        changestar_probability_path TEXT,
+        qwen_raw_output_path TEXT,
+
         FOREIGN KEY (aoi_id)
             REFERENCES aois(id)
     )

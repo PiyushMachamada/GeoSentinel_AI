@@ -29,6 +29,27 @@ def migrate():
             "ALTER TABLE analysis_results ADD COLUMN aoi_name TEXT"
         )
 
+    # New evidence path columns
+    if not column_exists(cursor, "analysis_results", "grounding_dino_diff_path"):
+        cursor.execute(
+            "ALTER TABLE analysis_results ADD COLUMN grounding_dino_diff_path TEXT"
+        )
+
+    if not column_exists(cursor, "analysis_results", "prithvi_change_map_path"):
+        cursor.execute(
+            "ALTER TABLE analysis_results ADD COLUMN prithvi_change_map_path TEXT"
+        )
+
+    if not column_exists(cursor, "analysis_results", "changestar_probability_path"):
+        cursor.execute(
+            "ALTER TABLE analysis_results ADD COLUMN changestar_probability_path TEXT"
+        )
+
+    if not column_exists(cursor, "analysis_results", "qwen_raw_output_path"):
+        cursor.execute(
+            "ALTER TABLE analysis_results ADD COLUMN qwen_raw_output_path TEXT"
+        )
+
     cursor.execute("""
         UPDATE analysis_results
         SET

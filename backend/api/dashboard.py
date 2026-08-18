@@ -184,28 +184,48 @@ def get_analysis_file(path: str):
     normalized_input = path.replace("\\", "/").strip()
     requested_path = Path(normalized_input)
 
+    # ------------------------------------------------------------------
+    # Determine relative_parts (path segments under outputs_root).
+    # Absolute paths are stored in the database by the pipeline; relative
+    # paths may be supplied by the frontend.  Both must resolve under
+    # outputs_root after normalization.
+    # ------------------------------------------------------------------
+
     if requested_path.is_absolute():
-        raise HTTPException(
-            status_code=400,
-            detail="Absolute paths are not allowed.",
+        # Strip any ".." from the supplied parts before comparing prefixes.
+        abs_parts = tuple(
+            p for p in requested_path.parts if p not in (".", "")
         )
-
-    normalized_parts = [part for part in requested_path.parts if part not in (".", "")]
-    if any(part == ".." for part in normalized_parts):
-        raise HTTPException(
-            status_code=400,
-            detail="Parent-directory references are not allowed.",
-        )
-
-    if normalized_parts[:2] == ["backend", "outputs"]:
-        relative_parts = normalized_parts[2:]
-    elif normalized_parts[:1] == ["outputs"]:
-        relative_parts = normalized_parts[1:]
+        if any(p == ".." for p in abs_parts):
+            raise HTTPException(
+                status_code=400,
+                detail="Parent-directory references are not allowed.",
+            )
+        outputs_parts = outputs_root.parts
+        n = len(outputs_parts)
+        if abs_parts[:n] != outputs_parts:
+            raise HTTPException(
+                status_code=403,
+                detail="Access to requested file path is not allowed.",
+            )
+        relative_parts = list(abs_parts[n:])
     else:
-        raise HTTPException(
-            status_code=403,
-            detail="Requested file must be inside the configured outputs directory.",
-        )
+        normalized_parts = [part for part in requested_path.parts if part not in (".", "")]
+        if any(part == ".." for part in normalized_parts):
+            raise HTTPException(
+                status_code=400,
+                detail="Parent-directory references are not allowed.",
+            )
+
+        if normalized_parts[:2] == ["backend", "outputs"]:
+            relative_parts = normalized_parts[2:]
+        elif normalized_parts[:1] == ["outputs"]:
+            relative_parts = normalized_parts[1:]
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail="Requested file must be inside the configured outputs directory.",
+            )
 
     file_path = (outputs_root / Path(*relative_parts)).resolve()
 

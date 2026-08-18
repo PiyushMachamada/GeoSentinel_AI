@@ -1,3 +1,4 @@
+import json as _json
 import os
 import time
 import requests
@@ -135,6 +136,8 @@ def generate_qwen_report(
     report_path,
     prompt_path,
     aoi_context=None,
+    raw_output_path=None,
+    model_info_path=None,
 ):
 
     prompt = build_intelligence_prompt(
@@ -209,9 +212,43 @@ def generate_qwen_report(
                     "Ollama returned an unexpected response."
                 )
 
-            report = _clean_response(
-                result["response"]
-            )
+            raw_response = result["response"]
+
+            # Persist raw LLM output before any cleaning
+            if raw_output_path is not None:
+                try:
+                    os.makedirs(
+                        os.path.dirname(str(raw_output_path)),
+                        exist_ok=True,
+                    )
+                    with open(str(raw_output_path), "w", encoding="utf-8") as fh:
+                        fh.write(raw_response)
+                    print(f"[Qwen] Raw output saved: {raw_output_path}")
+                except Exception as save_err:
+                    print(f"[Qwen] Could not save raw output: {save_err}")
+
+            # Persist model identification
+            if model_info_path is not None:
+                try:
+                    os.makedirs(
+                        os.path.dirname(str(model_info_path)),
+                        exist_ok=True,
+                    )
+                    model_info = {
+                        "llm": "Qwen",
+                        "model_name": MODEL_NAME,
+                        "ollama_url": OLLAMA_URL,
+                        "attempt": attempt + 1,
+                        "generation_time_seconds": round(time.time() - start, 2),
+                        "options": payload["options"],
+                    }
+                    with open(str(model_info_path), "w", encoding="utf-8") as fh:
+                        _json.dump(model_info, fh, indent=4)
+                    print(f"[Qwen] Model info saved: {model_info_path}")
+                except Exception as info_err:
+                    print(f"[Qwen] Could not save model info: {info_err}")
+
+            report = _clean_response(raw_response)
 
             report = report.replace(
                 "Prithvi EO 2.0 says",
