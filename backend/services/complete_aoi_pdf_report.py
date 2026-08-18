@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -137,7 +138,7 @@ class PDFBuilder:
             )
         )
         self.story.append(Spacer(1, 0.4 * cm))
-        self.story.append(Paragraph(f"Generated: {datetime.utcnow().isoformat()}Z", self.styles["BodyText"]))
+        self.story.append(Paragraph(f"Generated: {datetime.now(UTC).isoformat()}", self.styles["BodyText"]))
         self.story.append(PageBreak())
 
     def add_aoi_section(self, ctx: AOIReportContext):
@@ -332,8 +333,6 @@ class PDFBuilder:
         self.story.append(Paragraph("Raw Verbatim Output", self.styles["Heading4"]))
         self.story.append(Preformatted(raw_text, self.styles["Tiny"]))
 
-        self.story.append(Paragraph("Final Cleaned Intelligence Report", self.styles["Heading4"]))
-
 
 def _build_image_flowable(path: Path | None, ctx: AOIReportContext, width: float = 8.6 * cm, height: float = 6.0 * cm):
     if path is None:
@@ -479,9 +478,64 @@ def _first_date_like(obj: Any) -> str | None:
             if out:
                 return out
     elif isinstance(obj, str):
-        if any(t in obj for t in ["20", "-", "T", ":"]) and len(obj) >= 8:
+        if re.search(r"(19|20)\d{2}[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])", obj):
+            return obj
+        if re.search(r"(19|20)\d{2}-\d{2}-\d{2}T\d{2}:\d{2}", obj):
             return obj
     return None
+
+
+def _fetch_configured_aois() -> list[dict[str, Any]]:
+    if not DB_PATH.exists():
+        return CONFIGURED_AOIS
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(aois)").fetchall()
+        }
+        if not columns:
+            return CONFIGURED_AOIS
+
+        if "aoi_id" in columns:
+            rows = conn.execute(
+                """
+                SELECT aoi_id AS id, name, latitude, longitude, radius_km
+                FROM aois
+                ORDER BY aoi_id
+                """
+            ).fetchall()
+        elif "id" in columns:
+            rows = conn.execute(
+                """
+                SELECT id, name, latitude, longitude, radius_km
+                FROM aois
+                ORDER BY id
+                """
+            ).fetchall()
+        else:
+            return CONFIGURED_AOIS
+
+        parsed = []
+        for row in rows:
+            parsed.append(
+                {
+                    "id": str(row["id"]),
+                    "name": row["name"],
+                    "latitude": float(row["latitude"]),
+                    "longitude": float(row["longitude"]),
+                    "radius_km": float(row["radius_km"]),
+                }
+            )
+        if parsed:
+            return parsed
+        return CONFIGURED_AOIS
+    except sqlite3.DatabaseError:
+        return CONFIGURED_AOIS
+    finally:
+        conn.close()
 
 
 def _collect_llm_outputs(ctx: AOIReportContext):
@@ -500,7 +554,7 @@ def _collect_llm_outputs(ctx: AOIReportContext):
             if not file_path.is_file():
                 continue
             lower = file_path.name.lower()
-            if any(key in lower for key in [\"qwen\", \"llm\", \"intelligence_report\"]):
+            if any(key in lower for key in ["qwen", "llm", "intelligence_report"]):
                 discovered.append(str(file_path))
 
     ctx.llm_outputs = {
@@ -563,7 +617,7 @@ def _build_metrics_table(ctx: AOIReportContext) -> list[list[str]]:
 def build_contexts() -> list[AOIReportContext]:
     contexts: list[AOIReportContext] = []
 
-    for aoi in CONFIGURED_AOIS:
+    for aoi in _fetch_configured_aois():
         ctx = AOIReportContext(
             aoi_id=aoi["id"],
             aoi_name=aoi["name"],
