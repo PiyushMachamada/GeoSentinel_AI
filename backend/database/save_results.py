@@ -106,6 +106,11 @@ def save_result(
     change_map_path=None,
     change_binary_path=None,
 
+    grounding_dino_diff_path=None,
+    prithvi_change_map_path=None,
+    changestar_probability_path=None,
+    qwen_raw_output_path=None,
+
     execution_time=0.0,
 
     pipeline_version="GeoSentinel AI v1.0",
@@ -180,14 +185,19 @@ def save_result(
                 grounding_dino_after_path,
 
                 change_map_path,
-                change_binary_path
+                change_binary_path,
+
+                grounding_dino_diff_path,
+                prithvi_change_map_path,
+                changestar_probability_path,
+                qwen_raw_output_path
 
             )
 
             VALUES
             (
 
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 
             )
             """,
@@ -274,6 +284,11 @@ def save_result(
 
                 _to_db_path(change_map_path),
                 _to_db_path(change_binary_path),
+
+                _to_db_path(grounding_dino_diff_path),
+                _to_db_path(prithvi_change_map_path),
+                _to_db_path(changestar_probability_path),
+                _to_db_path(qwen_raw_output_path),
 
             ),
 

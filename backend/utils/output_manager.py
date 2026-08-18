@@ -407,6 +407,36 @@ class OutputManager:
                 ),
 
             # -------------------------
+            # Grounding DINO evidence
+            # -------------------------
+
+            "grounding_dino_diff_map":
+                self.get_path(
+                    "grounding_dino",
+                    "diff_map.png",
+                ),
+
+            # -------------------------
+            # Prithvi change map
+            # -------------------------
+
+            "prithvi_change_map":
+                self.get_path(
+                    "prithvi",
+                    "semantic_change_map.png",
+                ),
+
+            # -------------------------
+            # ChangeStar probability PNG
+            # -------------------------
+
+            "changestar_probability_map":
+                self.get_path(
+                    "changestar",
+                    "changestar_probability_map.png",
+                ),
+
+            # -------------------------
             # Reports
             # -------------------------
 
@@ -420,6 +450,18 @@ class OutputManager:
                 self.get_path(
                     "reports",
                     "qwen_prompt.txt",
+                ),
+
+            "qwen_raw_output":
+                self.get_path(
+                    "reports",
+                    "qwen_raw_output.txt",
+                ),
+
+            "qwen_model_info":
+                self.get_path(
+                    "reports",
+                    "qwen_model_info.json",
                 ),
 
             "semantic_change_results":

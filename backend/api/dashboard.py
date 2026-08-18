@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 
+from backend.config import OUTPUT_DIR
 from backend.database.dashboard_queries import (
     get_latest_analysis,
     get_analysis_history,
@@ -166,12 +167,80 @@ def analysis_health(aoi_id: str):
 @router.get("/file")
 def get_analysis_file(path: str):
 
-    file_path = Path(path)
+    if not path or not path.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Path query parameter is required.",
+        )
 
-    if not file_path.exists():
+    repo_root = Path(__file__).resolve().parents[2]
+    configured_output = Path(OUTPUT_DIR)
+    outputs_root = (
+        configured_output.resolve()
+        if configured_output.is_absolute()
+        else (repo_root / configured_output).resolve()
+    )
+
+    normalized_input = path.replace("\\", "/").strip()
+    requested_path = Path(normalized_input)
+
+    # ------------------------------------------------------------------
+    # Determine relative_parts (path segments under outputs_root).
+    # Absolute paths are stored in the database by the pipeline; relative
+    # paths may be supplied by the frontend.  Both must resolve under
+    # outputs_root after normalization.
+    # ------------------------------------------------------------------
+
+    if requested_path.is_absolute():
+        # Strip any ".." from the supplied parts before comparing prefixes.
+        abs_parts = tuple(
+            p for p in requested_path.parts if p not in (".", "")
+        )
+        if any(p == ".." for p in abs_parts):
+            raise HTTPException(
+                status_code=400,
+                detail="Parent-directory references are not allowed.",
+            )
+        outputs_parts = outputs_root.parts
+        n = len(outputs_parts)
+        if abs_parts[:n] != outputs_parts:
+            raise HTTPException(
+                status_code=403,
+                detail="Access to requested file path is not allowed.",
+            )
+        relative_parts = list(abs_parts[n:])
+    else:
+        normalized_parts = [part for part in requested_path.parts if part not in (".", "")]
+        if any(part == ".." for part in normalized_parts):
+            raise HTTPException(
+                status_code=400,
+                detail="Parent-directory references are not allowed.",
+            )
+
+        if normalized_parts[:2] == ["backend", "outputs"]:
+            relative_parts = normalized_parts[2:]
+        elif normalized_parts[:1] == ["outputs"]:
+            relative_parts = normalized_parts[1:]
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail="Requested file must be inside the configured outputs directory.",
+            )
+
+    file_path = (outputs_root / Path(*relative_parts)).resolve()
+
+    try:
+        file_path.relative_to(outputs_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=403,
+            detail="Access to requested file path is not allowed.",
+        )
+
+    if not file_path.exists() or not file_path.is_file():
         raise HTTPException(
             status_code=404,
-            detail=f"File not found: {file_path}"
+            detail="Requested file was not found."
         )
 
     return FileResponse(file_path)

@@ -52,4 +52,9 @@ export interface AnalysisResult {
 
   change_map_path: string;
   change_binary_path: string;
+
+  grounding_dino_diff_path: string;
+  prithvi_change_map_path: string;
+  changestar_probability_path: string;
+  qwen_raw_output_path: string;
 }

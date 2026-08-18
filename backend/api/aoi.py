@@ -15,15 +15,35 @@ def get_aois():
 
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute("PRAGMA table_info(aois)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "aoi_id" in columns:
+        id_column = "aoi_id"
+    elif "id" in columns:
+        id_column = "id"
+    else:
+        conn.close()
+        raise HTTPException(
+            status_code=500,
+            detail="AOI table is missing a required id column.",
+        )
+
+    mission_select_expr = (
+        "mission_type"
+        if "mission_type" in columns
+        else "NULL AS mission_type"
+    )
+
+    cursor.execute(f"""
         SELECT
 
-            aoi_id,
+            {id_column} AS aoi_id,
             name,
             latitude,
             longitude,
             radius_km,
-            mission_type,
+            {mission_select_expr},
             description,
             active,
             monitoring_interval,

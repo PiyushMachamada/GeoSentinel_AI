@@ -299,6 +299,10 @@ class GeoSentinelPipeline:
                 "grounding_dino_statistics_json"
             ],
 
+            diff_output=self.paths[
+                "grounding_dino_diff_map"
+            ],
+
             aoi_type=self.aoi.mission_type,
 
         )
@@ -495,7 +499,63 @@ class GeoSentinelPipeline:
             ignore_mask=ignore_mask,
 
         )
-        # ==================================================
+
+    # ==================================================
+    # Prithvi Semantic Change Map
+    # ==================================================
+
+    def _generate_prithvi_change_map(self):
+        """
+        Derive a semantic change map from the two Prithvi segmentation masks.
+
+        Pixels where the class label changed between BEFORE and AFTER are shown
+        in yellow.  Pixels that were always a particular class retain their
+        Prithvi class colour.  The result is saved to the path registered under
+        the key ``prithvi_change_map`` in ``self.paths``.
+        """
+
+        before_mask_path = self.paths["segmask_before"]
+        after_mask_path = self.paths["segmask_after"]
+
+        if not Path(str(before_mask_path)).exists() or \
+                not Path(str(after_mask_path)).exists():
+            print("[Prithvi] Segmentation masks not found; skipping change map.")
+            return
+
+        try:
+            from backend.models.prithvi.class_mapping import CLASS_COLORS
+
+            before_mask = np.load(str(before_mask_path)).astype(np.int32)
+            after_mask = np.load(str(after_mask_path)).astype(np.int32)
+
+            if before_mask.shape != after_mask.shape:
+                after_mask = cv2.resize(
+                    after_mask.astype(np.uint8),
+                    (before_mask.shape[1], before_mask.shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                ).astype(np.int32)
+
+            # Build a colour image: class colour where unchanged, yellow where changed
+            h, w = before_mask.shape
+            change_img = np.zeros((h, w, 3), dtype=np.uint8)
+
+            changed_pixels = before_mask != after_mask
+
+            for class_id, color in CLASS_COLORS.items():
+                mask = (after_mask == class_id) & ~changed_pixels
+                change_img[mask] = color[::-1]  # RGB → BGR for cv2
+
+            change_img[changed_pixels] = (0, 220, 220)  # yellow-ish in BGR
+
+            output_path = self.paths.get("prithvi_change_map")
+            if output_path is not None:
+                cv2.imwrite(str(output_path), change_img)
+                print(f"[Prithvi] Semantic change map saved: {output_path}")
+
+        except Exception as exc:
+            print(f"[Prithvi] Semantic change map generation failed: {exc}")
+
+    # ==================================================
     # MAIN PIPELINE
     # ==================================================
 
@@ -549,6 +609,8 @@ class GeoSentinelPipeline:
         # --------------------------------------------------
 
         prithvi_results = self.run_scene_understanding()
+
+        self._generate_prithvi_change_map()
 
         dominant = max(
             prithvi_results["after"],
@@ -952,6 +1014,12 @@ class GeoSentinelPipeline:
                 "name": self.aoi_name,
                 "mission_type": self.aoi.mission_type,
             },
+            raw_output_path=self.paths[
+                "qwen_raw_output"
+            ],
+            model_info_path=self.paths[
+                "qwen_model_info"
+            ],
         )
 
         print("\n")
@@ -1054,6 +1122,11 @@ class GeoSentinelPipeline:
 
                 change_map_path=self.paths["change_map"],
                 change_binary_path=self.paths["change_binary"],
+
+                grounding_dino_diff_path=self.paths["grounding_dino_diff_map"],
+                prithvi_change_map_path=self.paths["prithvi_change_map"],
+                changestar_probability_path=self.paths["changestar_probability_map"],
+                qwen_raw_output_path=self.paths["qwen_raw_output"],
 
                 execution_time=execution_time,
 

@@ -270,6 +270,14 @@ class ChangeStarModel:
         cv2.imwrite(mask_path, result)
         np.save(probability_path, probability_map)
 
+        # Save probability map as a browser-displayable heatmap PNG
+        prob_png_path = output_paths.get("changestar_probability_map")
+        if prob_png_path is not None:
+            prob_uint8 = np.clip(probability_map * 255.0, 0, 255).astype(np.uint8)
+            prob_heatmap = cv2.applyColorMap(prob_uint8, cv2.COLORMAP_JET)
+            cv2.imwrite(str(prob_png_path), prob_heatmap)
+            print(f"[ChangeStar2] Probability heatmap saved: {prob_png_path}")
+
         with open(statistics_path, "w", encoding="utf-8") as handle:
             json.dump(statistics, handle, indent=4)
 

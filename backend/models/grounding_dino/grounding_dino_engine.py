@@ -4,6 +4,9 @@ from backend.models.grounding_dino.grounding_dino_model import (
 
 from collections import Counter
 
+import cv2
+import numpy as np
+
 
 class GroundingDINOEngine:
     """
@@ -56,6 +59,7 @@ class GroundingDINOEngine:
         before_json,
         after_json,
         statistics_output=None,
+        diff_output=None,
         aoi_type="default",
     ):
 
@@ -85,11 +89,119 @@ class GroundingDINOEngine:
                 output_path=statistics_output,
             )
 
+        if diff_output is not None:
+            try:
+                self._generate_diff_map(
+                    before_image=before_image,
+                    after_image=after_image,
+                    before_results=before_results,
+                    after_results=after_results,
+                    output_path=diff_output,
+                )
+            except Exception as exc:
+                print(f"[GroundingDINO] diff_map generation failed: {exc}")
+
         return {
             "before": before_results,
             "after": after_results,
             "statistics": statistics,
         }
+
+    def _generate_diff_map(
+        self,
+        before_image,
+        after_image,
+        before_results,
+        after_results,
+        output_path,
+    ):
+        """
+        Generate a side-by-side object change visualisation.
+
+        Left panel  : BEFORE annotated image with disappeared objects
+                      highlighted in red.
+        Right panel : AFTER annotated image with new objects
+                      highlighted in green.
+        A thin black separator bar divides the panels, and a legend
+        is drawn at the top.
+        """
+
+        before_img = cv2.imread(str(before_image))
+        after_img = cv2.imread(str(after_image))
+
+        if before_img is None or after_img is None:
+            return
+
+        h = 512
+        w = 512
+
+        before_img = cv2.resize(before_img, (w, h))
+        after_img = cv2.resize(after_img, (w, h))
+
+        before_counts = Counter(
+            det["label"] for det in before_results
+        )
+        after_counts = Counter(
+            det["label"] for det in after_results
+        )
+
+        all_labels = set(before_counts) | set(after_counts)
+
+        disappeared = {
+            lbl for lbl in all_labels
+            if before_counts.get(lbl, 0) > after_counts.get(lbl, 0)
+        }
+        appeared = {
+            lbl for lbl in all_labels
+            if after_counts.get(lbl, 0) > before_counts.get(lbl, 0)
+        }
+
+        before_panel = before_img.copy()
+        after_panel = after_img.copy()
+
+        RED = (0, 0, 200)
+        GREEN = (0, 200, 0)
+
+        def _draw_boxes(panel, detections, highlight_labels, color):
+            for det in detections:
+                if det.get("label") in highlight_labels:
+                    box = det.get("box")
+                    if box and len(box) == 4:
+                        x1 = int(box[0] * w)
+                        y1 = int(box[1] * h)
+                        x2 = int(box[2] * w)
+                        y2 = int(box[3] * h)
+                        cv2.rectangle(panel, (x1, y1), (x2, y2), color, 3)
+                        label_text = det["label"]
+                        cv2.putText(
+                            panel, label_text,
+                            (x1, max(y1 - 6, 12)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1,
+                            cv2.LINE_AA,
+                        )
+
+        _draw_boxes(before_panel, before_results, disappeared, RED)
+        _draw_boxes(after_panel, after_results, appeared, GREEN)
+
+        sep = np.zeros((h, 6, 3), dtype=np.uint8)
+        diff_map = np.concatenate([before_panel, sep, after_panel], axis=1)
+
+        legend_height = 32
+        legend = np.full((legend_height, diff_map.shape[1], 3), 30, dtype=np.uint8)
+
+        cv2.putText(
+            legend, "BEFORE  (red = disappeared)",
+            (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (80, 80, 255), 1, cv2.LINE_AA,
+        )
+        cv2.putText(
+            legend, "AFTER  (green = appeared)",
+            (w + 16, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (80, 220, 80), 1, cv2.LINE_AA,
+        )
+
+        diff_map = np.concatenate([legend, diff_map], axis=0)
+
+        cv2.imwrite(str(output_path), diff_map)
+        print(f"[GroundingDINO] Diff map saved: {output_path}")
     
     def _compute_statistics(
         self,

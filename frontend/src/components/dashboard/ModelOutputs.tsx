@@ -89,8 +89,8 @@ function Section({
 /** Derive a path relative to analysis_directory using forward-slash segments. */
 function derivedPath(analysisDir: string | undefined, ...segments: string[]) {
   if (!analysisDir) return undefined;
-  // Support both backslash and forward-slash directory separators
-  return `${analysisDir}\\${segments.join("\\")}`;
+  const normalizedDir = analysisDir.replace(/\\/g, "/").replace(/\/+$/, "");
+  return `${normalizedDir}/${segments.join("/")}`;
 }
 
 export default function ModelOutputs({
@@ -144,6 +144,14 @@ export default function ModelOutputs({
           />
 
         </div>
+
+        <div className="grid md:grid-cols-1 gap-5 mt-4">
+          <ImageCard
+            title="Object Change Map (Added / Disappeared)"
+            path={analysis.grounding_dino_diff_path}
+            status="Object change map not generated"
+          />
+        </div>
       </Section>
 
       <Section
@@ -165,6 +173,14 @@ export default function ModelOutputs({
           />
 
         </div>
+
+        <div className="grid md:grid-cols-1 gap-5 mt-4">
+          <ImageCard
+            title="Semantic Change Map"
+            path={analysis.prithvi_change_map_path}
+            status="Semantic change map not generated"
+          />
+        </div>
       </Section>
 
       <Section
@@ -174,7 +190,7 @@ export default function ModelOutputs({
         <div className="grid md:grid-cols-2 gap-5">
 
           <ImageCard
-            title="Change Prediction"
+            title="Change Prediction (Overlay)"
             path={analysis.changestar_result_path}
             status="Change detection not available"
           />
@@ -185,6 +201,20 @@ export default function ModelOutputs({
             status="Change map not available"
           />
 
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-5 mt-4">
+          <ImageCard
+            title="ChangeStar2 Probability Map"
+            path={analysis.changestar_probability_path}
+            status="Probability map not generated"
+          />
+
+          <ImageCard
+            title="SSIM Change Map"
+            path={analysis.change_map_path}
+            status="SSIM change map not generated"
+          />
         </div>
       </Section>
 
@@ -206,6 +236,14 @@ export default function ModelOutputs({
             status="Dynamic World not available for this analysis"
           />
 
+        </div>
+
+        <div className="grid md:grid-cols-1 gap-5 mt-4">
+          <ImageCard
+            title="Land-Cover Transition Map"
+            path={analysis.dynamic_world_transition_map}
+            status="Transition map not generated"
+          />
         </div>
       </Section>
 
@@ -232,6 +270,55 @@ export default function ModelOutputs({
             path={derivedPath(dir, "images", "change_detection", "uncertainty_map.png")}
             status="Uncertainty map not generated"
           />
+
+        </div>
+      </Section>
+
+      <Section
+        title="LLM Intelligence Evidence"
+        subtitle="Qwen-generated intelligence report evidence. Raw output is preserved alongside the cleaned display version."
+      >
+        <div className="grid md:grid-cols-1 gap-5">
+
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="border-b bg-slate-50 px-4 py-3">
+              <h3 className="font-semibold text-slate-800">LLM Model</h3>
+            </div>
+            <div className="px-4 py-4 text-slate-700 text-sm space-y-2">
+              <p>
+                <span className="font-medium">Generator:</span>{" "}
+                <span className="font-mono bg-slate-100 px-1 rounded">Qwen</span>
+              </p>
+              <p>
+                <span className="font-medium">Cleaned report:</span>{" "}
+                <span className="font-mono text-xs text-slate-500">
+                  {derivedPath(dir, "reports", "intelligence_report.txt") ?? "Unavailable"}
+                </span>
+              </p>
+              <p>
+                <span className="font-medium">Raw LLM output:</span>{" "}
+                {analysis.qwen_raw_output_path ? (
+                  <span className="font-mono text-xs text-slate-500">
+                    {analysis.qwen_raw_output_path}
+                  </span>
+                ) : (
+                  <span className="text-slate-400 italic">Not saved (Qwen unavailable during run)</span>
+                )}
+              </p>
+              <p>
+                <span className="font-medium">Prompt / context:</span>{" "}
+                <span className="font-mono text-xs text-slate-500">
+                  {derivedPath(dir, "reports", "qwen_prompt.txt") ?? "Unavailable"}
+                </span>
+              </p>
+              <p>
+                <span className="font-medium">Model info JSON:</span>{" "}
+                <span className="font-mono text-xs text-slate-500">
+                  {derivedPath(dir, "reports", "qwen_model_info.json") ?? "Unavailable"}
+                </span>
+              </p>
+            </div>
+          </div>
 
         </div>
       </Section>
